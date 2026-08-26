@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#050505" />
+  <title>Enchente Lajeado</title>
+  <link rel="icon" href="img/favicon.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="vignette"></div>
+  <main class="cluster">
+    <section class="side side-l">
+      <article class="lcd"><em>TEMPERATURA</em><span class="val"><b id="v-temp">--</b><i>°C</i></span></article>
+      <article class="lcd">
+        <em>MÁXIMA · MÍNIMA</em>
+        <div class="pair-row">
+          <span><b id="v-tmax">--</b><i>°C</i></span>
+          <span><b id="v-tmin">--</b><i>°C</i></span>
+        </div>
+      </article>
+      <article class="lcd"><em>UMIDADE AR</em><span class="val"><b id="v-hum">--</b><i>%</i></span></article>
+      <article class="lcd"><em>PRESSÃO AR</em><span class="val"><b id="v-hpa">--</b><i>hPa</i></span></article>
+      <article class="lcd"><em>VENTO</em><span class="val"><b id="v-wind">--</b><i>km/h</i></span></article>
+      <article class="lcd"><em>RAJADA VENTO</em><span class="val"><b id="v-gust">--</b><i>km/h</i></span></article>
+      <article class="lcd"><em>ÍNDICE UV</em><span class="val"><b id="v-uv">--</b></span></article>
+      <article class="lcd"><em>NUVENS</em><span class="val"><b id="v-cloud">--</b><i>%</i></span></article>
+    </section>
+
+    <section class="core">
+      <p class="gauge-banner">CHANCE DE ENCHENTE · 7 DIAS</p>
+      <div class="gauge" id="gauge">
+        <img class="face" src="img/gauge-face.png" alt="" />
+        <div class="needle-wrap" id="needle-wrap">
+          <img src="img/needle.png" alt="" />
+        </div>
+        <canvas id="needle-canvas"></canvas>
+        <div class="hub"></div>
+        <div class="glass"></div>
+        <div class="pct">
+          <span class="pct-num"><b id="v-pct">--</b><i>%</i></span>
+          <strong id="v-risk">---</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="side side-r">
+      <article class="lcd wx-lcd">
+        <em>TEMPO AGORA</em>
+        <div class="lamp" id="wx-lamp" data-wx="sun"></div>
+      </article>
+      <article class="lcd"><em>NÍVEL DO RIO</em><span class="val"><b id="v-river">--</b><i>m</i></span></article>
+      <article class="lcd"><em>RIO SUBINDO</em><span class="val"><b id="v-trend">--</b><i>cm/h</i></span></article>
+      <article class="lcd"><em>CHUVA HOJE</em><span class="val"><b id="v-mm-d">--</b><i>mm</i></span></article>
+      <article class="lcd"><em>CHUVA SEMANA</em><span class="val"><b id="v-mm-w">--</b><i>mm</i></span></article>
+      <article class="lcd"><em>CHUVA MÊS</em><span class="val"><b id="v-mm-m">--</b><i>mm</i></span></article>
+      <article class="lcd"><em>VAZÃO DO RIO</em><span class="val"><b id="v-q">--</b><i>m³/s</i></span></article>
+      <article class="lcd"><em>UMIDADE SOLO</em><span class="val"><b id="v-soil">--</b><i>%</i></span></article>
+    </section>
+
+    <div class="clock lcd clock-lcd">
+      <em>LAJEADO RS</em>
+      <time id="v-date">--.--.----</time>
+      <time id="v-time">--:--:--</time>
+    </div>
+
+    <section class="radio" id="radio">
+      <div class="knob-col" data-knob="tune">
+        <button type="button" class="knob" id="knob-tune" title="Estação"></button>
+        <em>ESTAÇÃO</em>
+      </div>
+      <div class="radio-lcd" id="radio-lcd">
+        <div class="radio-meta">
+          <span id="radio-band">FM</span>
+          <span id="radio-freq">91.7</span>
+          <span id="radio-st">ST</span>
+        </div>
+        <strong id="radio-name">INDEPENDENTE</strong>
+        <small id="radio-city">LAJEADO · VALE DO TAQUARI</small>
+      </div>
+      <button type="button" class="pwr" id="radio-pwr" title="Liga" aria-pressed="false"></button>
+      <div class="knob-col" data-knob="vol">
+        <button type="button" class="knob vol" id="knob-vol" title="Volume"></button>
+        <em>VOLUME</em>
+      </div>
+      <audio id="radio-audio" preload="none"></audio>
+    </section>
+
+    <section class="week-wrap">
+      <em>CHUVA · PREVISÃO 7 DIAS</em>
+      <div class="week" id="week"></div>
+    </section>
+  </main>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Cache-Control = "public, max-age=120"
+
+[[headers]]
+  for = "/img/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[redirects]]
+  from = "/p/ana"
+  to = "https://telemetriaws1.ana.gov.br/ServiceANA.asmx/DadosHidrometeorologicos"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/p/ng/*"
+  to = "https://nivelguaiba.com.br/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/p/inmet/*"
+  to = "https://apiprevmet3.inmet.gov.br/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/p/wttr/*"
+  to = "https://wttr.in/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/p/wtime/*"
+  to = "https://worldtimeapi.org/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/p/timeapi/*"
+  to = "https://timeapi.io/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/p/timeapi2/*"
+  to = "https://www.timeapi.io/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/p/wclock/*"
+  to = "https://worldclockapi.com/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/p/radio/*"
+  to = "https://de1.api.radio-browser.info/:splat"
+  status = 200
+  force = true
