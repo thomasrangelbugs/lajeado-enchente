@@ -84,6 +84,51 @@
 
   const $ = (id) => document.getElementById(id);
 
+  const link = {
+    total: 1,
+    done: 0,
+    begin(n) {
+      this.total = Math.max(1, n);
+      this.done = 0;
+      const w = $("link-status");
+      if (w) {
+        w.dataset.state = "load";
+        w.classList.remove("idle");
+      }
+      this.paint();
+    },
+    tick() {
+      this.done += 1;
+      this.paint();
+    },
+    paint() {
+      const pct = clamp((this.done / this.total) * 100, 3, 99);
+      const fillEl = $("link-fill");
+      const lab = $("link-label");
+      const w = $("link-status");
+      if (fillEl) fillEl.style.width = pct + "%";
+      if (lab && w && w.dataset.state === "load") {
+        lab.textContent = "BUSCANDO  " + Math.round(pct) + "%";
+      }
+    },
+    online() {
+      this.done = this.total;
+      const fillEl = $("link-fill");
+      const lab = $("link-label");
+      const w = $("link-status");
+      if (fillEl) fillEl.style.width = "100%";
+      if (w) w.dataset.state = "on";
+      if (lab) lab.textContent = "ONLINE";
+      setTimeout(() => w && w.classList.add("idle"), 800);
+    },
+    offline() {
+      const w = $("link-status");
+      const lab = $("link-label");
+      if (w) w.dataset.state = "off";
+      if (lab) lab.textContent = "OFFLINE";
+    }
+  };
+
   function pad(n, s = 2) {
     return String(n).padStart(s, "0");
   }
@@ -139,7 +184,7 @@
       const res = await fetch(url, { signal: ctrl.signal, cache: "no-store" });
       if (!res.ok) throw new Error(String(res.status));
       const text = await res.text();
-      const trimmed = text.trim();
+      const trimmed = text.trim().replace(/^\uFEFF/, "");
       if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
         try { return JSON.parse(trimmed); } catch (_) {}
       }
@@ -251,36 +296,49 @@
     ];
 
     const marks = [];
-    await Promise.allSettled(
-      urls.map(async (u) => {
-        const t0 = Date.now();
-        const j = await grab(u, 5000);
-        const t1 = Date.now();
-        let parsed = NaN;
-        if (typeof j === "string") {
-          const unix = j.match(/unixtime[=:](\d+)/i);
-          const ts = j.match(/\bts=([\d.]+)/);
-          if (unix) parsed = Number(unix[1]) * 1000;
-          else if (ts) parsed = Number(ts[1]) * 1000;
-        } else if (j && typeof j === "object") {
-          let iso =
-            j.datetime ||
-            j.utc_datetime ||
-            j.dateTime ||
-            j.currentDateTime ||
-            j.utcDateTime;
-          if (!iso && j.year) {
-            iso = `${j.year}-${pad(j.month)}-${pad(j.day)}T${pad(j.hour)}:${pad(j.minute)}:${pad(j.seconds)}`;
-          }
-          parsed = Date.parse(iso);
-          if (!Number.isFinite(parsed) && j.unixTime) parsed = Number(j.unixTime) * 1000;
-        }
-        if (!Number.isFinite(parsed)) return;
-        const mid = (t0 + t1) / 2;
-        marks.push(parsed - mid);
-      })
-    );
-    if (marks.length) state.offsetMs = median(marks);
+    const applyOffset = () => {
+      if (marks.length) state.offsetMs = median(marks);
+    };
+    await Promise.race([
+      new Promise((resolve) => {
+        let left = urls.length;
+        if (!left) resolve();
+        urls.forEach(async (u) => {
+          try {
+            const t0 = Date.now();
+            const j = await grab(u, 2500);
+            const t1 = Date.now();
+            let parsed = NaN;
+            if (typeof j === "string") {
+              const unix = j.match(/unixtime[=:](\d+)/i);
+              const ts = j.match(/\bts=([\d.]+)/);
+              if (unix) parsed = Number(unix[1]) * 1000;
+              else if (ts) parsed = Number(ts[1]) * 1000;
+            } else if (j && typeof j === "object") {
+              let stamp =
+                j.datetime ||
+                j.utc_datetime ||
+                j.dateTime ||
+                j.currentDateTime ||
+                j.utcDateTime;
+              if (!stamp && j.year) {
+                stamp = `${j.year}-${pad(j.month)}-${pad(j.day)}T${pad(j.hour)}:${pad(j.minute)}:${pad(j.seconds)}`;
+              }
+              parsed = Date.parse(stamp);
+              if (!Number.isFinite(parsed) && j.unixTime) parsed = Number(j.unixTime) * 1000;
+            }
+            if (Number.isFinite(parsed)) {
+              marks.push(parsed - (t0 + t1) / 2);
+              applyOffset();
+              resolve();
+            }
+          } catch (_) {}
+          if (--left <= 0) resolve();
+        });
+      }),
+      new Promise((r) => setTimeout(r, 1800))
+    ]);
+    applyOffset();
   }
 
   function now() {
@@ -359,7 +417,8 @@
     });
   }
 
-  async function loadAll() {
+  async function loadAll(opts = {}) {
+    const quiet = !!opts.quiet;
     const ms = now();
     const br = todayBR(ms);
     const iso = new Date(ms).toLocaleDateString("en-CA", { timeZone: TZ });
@@ -407,7 +466,8 @@
       avisos: "https://apiprevmet3.inmet.gov.br/avisos/ativos",
       avisosP: "/p/inmet/avisos/ativos",
       wttr: "https://wttr.in/Lajeado+RS?format=j1",
-      wttrP: "/p/wttr/Lajeado+RS?format=j1"
+      wttrP: "/p/wttr/Lajeado+RS?format=j1",
+      allorigins: "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://nivelguaiba.com.br/lajeado.json")
     };
 
     modelUrls.forEach((url, i) => {
@@ -429,217 +489,232 @@
     }
 
     const bag = {};
-    const fill = async (entries, timeout) => {
+    const fill = async (entries, timeout, onHit) => {
       await Promise.allSettled(
         entries.map(async ([url, keys]) => {
           try {
             const val = await grab(url, timeout);
             for (const k of keys) bag[k] = val;
+            if (onHit) onHit(keys);
           } catch (_) {}
+          if (!quiet) link.tick();
         })
       );
     };
 
     const allEntries = [...unique.entries()];
-    const coreKeys = new Set(["best", "bestSimple", "flood", "lajeado", "lajeadoP", "anaP"]);
+    if (!quiet) link.begin(allEntries.length);
+
+    const coreKeys = new Set(["bestSimple", "flood", "lajeadoP"]);
     const core = allEntries.filter(([, keys]) => keys.some((k) => coreKeys.has(k)));
     const rest = allEntries.filter(([, keys]) => !keys.some((k) => coreKeys.has(k)));
-    await fill(core, 8000);
 
-    const rainMaps = [];
-    const tempNow = [];
-    const humNow = [];
-    const windNow = [];
-    const pressNow = [];
-    const codeNow = [];
-    const dayFlag = [];
-    const tmax = [];
-    const tmin = [];
-    const uv = [];
-    const cloud = [];
-    const soil = [];
-    const gust = [];
+    const commitDash = () => {
+      const rainMaps = [];
+      const tempNow = [];
+      const humNow = [];
+      const windNow = [];
+      const pressNow = [];
+      const codeNow = [];
+      const dayFlag = [];
+      const tmax = [];
+      const tmin = [];
+      const uv = [];
+      const cloud = [];
+      const soil = [];
+      const gust = [];
 
-    const ingestOm = (j) => {
-      if (!j) return;
-      if (j.current) {
-        if (j.current.temperature_2m != null) tempNow.push(j.current.temperature_2m);
-        if (j.current.relative_humidity_2m != null) humNow.push(j.current.relative_humidity_2m);
-        if (j.current.wind_speed_10m != null) windNow.push(j.current.wind_speed_10m);
-        if (j.current.wind_gusts_10m != null) gust.push(j.current.wind_gusts_10m);
-        if (j.current.pressure_msl != null) pressNow.push(j.current.pressure_msl);
-        if (j.current.surface_pressure != null) pressNow.push(j.current.surface_pressure);
-        if (j.current.weather_code != null) codeNow.push(j.current.weather_code);
-        if (j.current.is_day != null) dayFlag.push(j.current.is_day);
-        if (j.current.cloud_cover != null) cloud.push(j.current.cloud_cover);
-        if (j.current.soil_moisture_0_to_7cm != null) soil.push(j.current.soil_moisture_0_to_7cm * 100);
+      const ingestOm = (j) => {
+        if (!j || typeof j !== "object") return;
+        if (j.current) {
+          if (j.current.temperature_2m != null) tempNow.push(j.current.temperature_2m);
+          if (j.current.relative_humidity_2m != null) humNow.push(j.current.relative_humidity_2m);
+          if (j.current.wind_speed_10m != null) windNow.push(j.current.wind_speed_10m);
+          if (j.current.wind_gusts_10m != null) gust.push(j.current.wind_gusts_10m);
+          if (j.current.pressure_msl != null) pressNow.push(j.current.pressure_msl);
+          if (j.current.surface_pressure != null) pressNow.push(j.current.surface_pressure);
+          if (j.current.weather_code != null) codeNow.push(j.current.weather_code);
+          if (j.current.is_day != null) dayFlag.push(j.current.is_day);
+          if (j.current.cloud_cover != null) cloud.push(j.current.cloud_cover);
+          if (j.current.soil_moisture_0_to_7cm != null) soil.push(j.current.soil_moisture_0_to_7cm * 100);
+        }
+        rainMaps.push(collectDailyByDate(j, "precipitation_sum"));
+        const d = j.daily || {};
+        if (Array.isArray(d.temperature_2m_max)) tmax.push(d.temperature_2m_max[Math.max(0, d.temperature_2m_max.length - 7)] ?? d.temperature_2m_max[0]);
+        if (Array.isArray(d.temperature_2m_min)) tmin.push(d.temperature_2m_min[Math.max(0, d.temperature_2m_min.length - 7)] ?? d.temperature_2m_min[0]);
+        if (Array.isArray(d.uv_index_max)) uv.push(d.uv_index_max[Math.max(0, d.uv_index_max.length - 7)] ?? d.uv_index_max[0]);
+      };
+
+      ingestOm(bag.best);
+      ingestOm(bag.bestSimple);
+      ingestOm(bag.ensEcmwf);
+      ingestOm(bag.ensGfs);
+      ingestOm(bag.ensIcon);
+      ingestOm(bag.ensGem);
+      ingestOm(bag.prev);
+      modelUrls.forEach((_, i) => ingestOm(bag["model" + i]));
+
+      if (Array.isArray(bag.basin)) bag.basin.forEach(ingestOm);
+      else ingestOm(bag.basin);
+
+      const bestDaily = (bag.best && bag.best.daily) || (bag.bestSimple && bag.bestSimple.daily);
+      const rainByDate = mergeDateMaps(rainMaps);
+      let times = [];
+      if (bestDaily && Array.isArray(bestDaily.time)) {
+        const start = bestDaily.time.findIndex((t) => t >= iso);
+        const i0 = start < 0 ? Math.max(0, bestDaily.time.length - 7) : start;
+        times = bestDaily.time.slice(i0, i0 + 7);
+      } else {
+        times = Array.from({ length: 7 }, (_, i) => addDays(iso, i));
       }
-      rainMaps.push(collectDailyByDate(j, "precipitation_sum"));
-      const d = j.daily || {};
-      if (Array.isArray(d.temperature_2m_max)) tmax.push(d.temperature_2m_max[Math.max(0, d.temperature_2m_max.length - 7)] ?? d.temperature_2m_max[0]);
-      if (Array.isArray(d.temperature_2m_min)) tmin.push(d.temperature_2m_min[Math.max(0, d.temperature_2m_min.length - 7)] ?? d.temperature_2m_min[0]);
-      if (Array.isArray(d.uv_index_max)) uv.push(d.uv_index_max[Math.max(0, d.uv_index_max.length - 7)] ?? d.uv_index_max[0]);
-    };
+      let rain7 = times.map((t) => rainByDate[t] ?? Number(bestDaily && bestDaily.precipitation_sum && bestDaily.precipitation_sum[bestDaily.time.indexOf(t)]) ?? 0);
 
-    ingestOm(bag.best);
-    ingestOm(bag.bestSimple);
-    ingestOm(bag.ensEcmwf);
-    ingestOm(bag.ensGfs);
-    ingestOm(bag.ensIcon);
-    ingestOm(bag.ensGem);
-    ingestOm(bag.prev);
-    modelUrls.forEach((_, i) => ingestOm(bag["model" + i]));
+      if (bag.wttr && bag.wttr.weather) {
+        const extra = bag.wttr.weather.slice(0, 7).map((d) => Number(d.precipMM));
+        extra.forEach((mm, i) => {
+          if (Number.isFinite(mm) && rain7[i] != null) rain7[i] = (rain7[i] + mm) / 2;
+        });
+        const cc = bag.wttr.current_condition && bag.wttr.current_condition[0];
+        if (cc) {
+          if (cc.temp_C) tempNow.push(Number(cc.temp_C));
+          if (cc.humidity) humNow.push(Number(cc.humidity));
+          if (cc.windspeedKmph) windNow.push(Number(cc.windspeedKmph));
+          if (cc.pressure) pressNow.push(Number(cc.pressure));
+        }
+      }
+      ingestOm(bag.wttrP && typeof bag.wttrP === "object" ? bag.wttrP : null);
 
-    if (Array.isArray(bag.basin)) bag.basin.forEach(ingestOm);
-    else ingestOm(bag.basin);
-
-    const bestDaily = (bag.best && bag.best.daily) || (bag.bestSimple && bag.bestSimple.daily);
-    const rainByDate = mergeDateMaps(rainMaps);
-    let times = [];
-    if (bestDaily && Array.isArray(bestDaily.time)) {
-      const start = bestDaily.time.findIndex((t) => t >= iso);
-      const i0 = start < 0 ? Math.max(0, bestDaily.time.length - 7) : start;
-      times = bestDaily.time.slice(i0, i0 + 7);
-    } else {
-      times = Array.from({ length: 7 }, (_, i) => addDays(iso, i));
-    }
-    let rain7 = times.map((t, i) => rainByDate[t] ?? Number(bestDaily && bestDaily.precipitation_sum && bestDaily.precipitation_sum[bestDaily.time.indexOf(t)]) ?? 0);
-
-    if (bag.wttr && bag.wttr.weather) {
-      const extra = bag.wttr.weather.slice(0, 7).map((d) => Number(d.precipMM));
-      extra.forEach((mm, i) => {
-        if (Number.isFinite(mm) && rain7[i] != null) rain7[i] = (rain7[i] + mm) / 2;
+      const inmet = bag.inmet || bag.inmetP;
+      inmetRain(inmet).forEach((row, i) => {
+        if (rain7[i] != null && row.mm) rain7[i] = (rain7[i] + row.mm) / 2;
       });
-      const cc = bag.wttr.current_condition && bag.wttr.current_condition[0];
-      if (cc) {
-        if (cc.temp_C) tempNow.push(Number(cc.temp_C));
-        if (cc.humidity) humNow.push(Number(cc.humidity));
-        if (cc.windspeedKmph) windNow.push(Number(cc.windspeedKmph));
-        if (cc.pressure) pressNow.push(Number(cc.pressure));
-      }
-    }
-    ingestOm(bag.wttrP && typeof bag.wttrP === "object" ? bag.wttrP : null);
 
-    const inmet = bag.inmet || bag.inmetP;
-    inmetRain(inmet).forEach((row, i) => {
-      if (rain7[i] != null && row.mm) rain7[i] = (rain7[i] + row.mm) / 2;
-    });
-
-    let rainMonth = 0;
-    if (bestDaily && Array.isArray(bestDaily.precipitation_sum) && Array.isArray(bestDaily.time)) {
-      const idxToday = bestDaily.time.indexOf(iso);
-      const iEnd = idxToday < 0 ? bestDaily.time.length - 7 : idxToday + 1;
-      const iStart = Math.max(0, iEnd - 30);
-      rainMonth = bestDaily.precipitation_sum.slice(iStart, iEnd).reduce((s, x) => s + (Number(x) || 0), 0);
-    }
-    if (bag.archive && bag.archive.daily && Array.isArray(bag.archive.daily.precipitation_sum)) {
-      rainMonth = bag.archive.daily.precipitation_sum.reduce((s, x) => s + (Number(x) || 0), 0);
-      if (bestDaily) {
-        const todayIdx = bestDaily.time ? bestDaily.time.indexOf(iso) : -1;
-        if (todayIdx >= 0) rainMonth += Number(bestDaily.precipitation_sum[todayIdx]) || 0;
+      let rainMonth = 0;
+      if (bestDaily && Array.isArray(bestDaily.precipitation_sum) && Array.isArray(bestDaily.time)) {
+        const idxToday = bestDaily.time.indexOf(iso);
+        const iEnd = idxToday < 0 ? bestDaily.time.length - 7 : idxToday + 1;
+        const iStart = Math.max(0, iEnd - 30);
+        rainMonth = bestDaily.precipitation_sum.slice(iStart, iEnd).reduce((s, x) => s + (Number(x) || 0), 0);
       }
-    }
-
-    let river = parseRiverJson(bag.lajeado) || parseRiverJson(bag.lajeadoP);
-    const ana = parseAnaXml(bag.ana, ms) || parseAnaXml(bag.anaP, ms);
-    if (ana) {
-      if (!river || ana.at >= (river.at || 0)) {
-        river = { m: ana.m, at: ana.at, trend: river ? river.trend : 0 };
+      if (bag.archive && bag.archive.daily && Array.isArray(bag.archive.daily.precipitation_sum)) {
+        rainMonth = bag.archive.daily.precipitation_sum.reduce((s, x) => s + (Number(x) || 0), 0);
+        if (bestDaily) {
+          const todayIdx = bestDaily.time ? bestDaily.time.indexOf(iso) : -1;
+          if (todayIdx >= 0) rainMonth += Number(bestDaily.precipitation_sum[todayIdx]) || 0;
+        }
       }
-    }
-    if (!river) {
+
+      let river = parseRiverJson(bag.lajeado) || parseRiverJson(bag.lajeadoP);
+      if (!river && bag.allorigins) {
+        try {
+          const raw = bag.allorigins;
+          river = parseRiverJson(typeof raw === "string" ? JSON.parse(raw) : raw);
+        } catch (_) {}
+      }
+      const ana = parseAnaXml(bag.ana, ms) || parseAnaXml(bag.anaP, ms);
+      if (ana) {
+        if (!river || ana.at >= (river.at || 0)) {
+          river = { m: ana.m, at: ana.at, trend: river ? river.trend : 0 };
+        }
+      }
+      if (river) state.lastRiver = river;
+
+      let upstreamMax = 0;
+      UPSTREAM.forEach((u) => {
+        const j = bag["ng_" + u.slug] || bag["ngp_" + u.slug] || bag["nga_" + u.slug + "0"];
+        const r = parseRiverJson(j);
+        if (r) upstreamMax = Math.max(upstreamMax, (r.m / u.flood) * 100);
+      });
+      const mucumAna = parseAnaXml(bag.anaM, ms);
+      if (mucumAna) upstreamMax = Math.max(upstreamMax, (mucumAna.m / 18) * 100);
+
+      const flood = bag.flood && bag.flood.daily ? bag.flood.daily : {};
+      const q = (k) => (Array.isArray(flood[k]) ? flood[k].map(Number) : []);
+      const qNow = q("river_discharge")[0];
+      const qMean = q("river_discharge_mean");
+      const qMax = q("river_discharge_max");
+      const qMin = q("river_discharge_min");
+
+      let alertStorm = false;
+      let alertGrande = false;
+      const avisos = bag.avisos || bag.avisosP;
       try {
-        const raw = await grab("https://api.allorigins.win/raw?url=" + encodeURIComponent("https://nivelguaiba.com.br/lajeado.json"), 7000);
-        river = parseRiverJson(typeof raw === "string" ? JSON.parse(raw) : raw);
-      } catch (_) {}
-    }
-    if (river) state.lastRiver = river;
-
-    let upstreamMax = 0;
-    UPSTREAM.forEach((u) => {
-      const j = bag["ng_" + u.slug] || bag["ngp_" + u.slug] || bag["nga_" + u.slug + "0"];
-      const r = parseRiverJson(j);
-      if (r) upstreamMax = Math.max(upstreamMax, (r.m / u.flood) * 100);
-    });
-    const mucumAna = parseAnaXml(bag.anaM, ms);
-    if (mucumAna) upstreamMax = Math.max(upstreamMax, (mucumAna.m / 18) * 100);
-
-    const flood = bag.flood && bag.flood.daily ? bag.flood.daily : {};
-    const q = (k) => (Array.isArray(flood[k]) ? flood[k].map(Number) : []);
-    const qNow = q("river_discharge")[0];
-    const qMean = q("river_discharge_mean");
-    const qMax = q("river_discharge_max");
-    const qMin = q("river_discharge_min");
-
-    let alertStorm = false;
-    let alertGrande = false;
-    const avisos = bag.avisos || bag.avisosP;
-    try {
-      const blob = JSON.stringify(avisos || "").toLowerCase();
-      if (blob.includes("rio grande do sul") || blob.includes("\"rs\"") || blob.includes("lajeado")) {
-        alertStorm = blob.includes("tempestade") || blob.includes("chuva");
-        alertGrande = blob.includes("grande perigo") || blob.includes("vermelho");
-      }
-    } catch (_) {}
-
-    const rainWeek = rain7.reduce((s, x) => s + (Number(x) || 0), 0);
-    const rainPeak = Math.max(0, ...rain7.map(Number));
-    const rainDay = rain7[0] || 0;
-
-    const data = {
-      temp: avg(tempNow),
-      hum: avg(humNow),
-      wind: avg(windNow),
-      gust: avg(gust.length ? gust : windNow.map((w) => w * 1.4)),
-      hpa: avg(pressNow),
-      tmax: avg(tmax) ?? (bestDaily && bestDaily.temperature_2m_max ? bestDaily.temperature_2m_max.at(-7) : null),
-      tmin: avg(tmin) ?? (bestDaily && bestDaily.temperature_2m_min ? bestDaily.temperature_2m_min.at(-7) : null),
-      uv: avg(uv) ?? (bestDaily && bestDaily.uv_index_max ? bestDaily.uv_index_max[bestDaily.uv_index_max.length - 7] : 0),
-      cloud: avg(cloud),
-      soil: avg(soil),
-      code: median(codeNow),
-      isDay: (avg(dayFlag) ?? 1) >= 0.5,
-      riverM: river ? river.m : state.lastRiver.m,
-      riverAt: river ? river.at : state.lastRiver.at,
-      trend: river ? river.trend : state.lastRiver.trend,
-      rainDay,
-      rainWeek,
-      rainMonth,
-      rain7,
-      times,
-      qNow,
-      qMean,
-      qMax,
-      qMin,
-      upstreamMax,
-      alertStorm,
-      alertGrande
-    };
-
-    if (bestDaily) {
-      const i0 = bestDaily.time ? Math.max(0, bestDaily.time.findIndex((t) => t >= iso)) : 0;
-      data.tmax = bestDaily.temperature_2m_max ? bestDaily.temperature_2m_max[i0] : data.tmax;
-      data.tmin = bestDaily.temperature_2m_min ? bestDaily.temperature_2m_min[i0] : data.tmin;
-      data.uv = bestDaily.uv_index_max ? bestDaily.uv_index_max[i0] : data.uv;
-      data.rainDay = bestDaily.precipitation_sum ? Number(bestDaily.precipitation_sum[i0]) || data.rainDay : data.rainDay;
-    }
-
-    data.chance = chance(data);
-    state.data = data;
-    state.target = data.chance;
-    try { paintDash(data); } catch (err) { console.error(err); }
-    fill(rest, 7000).then(() => {
-      try {
-        const later = parseRiverJson(bag.lajeado) || parseRiverJson(bag.lajeadoP) || parseAnaXml(bag.ana, now()) || parseAnaXml(bag.anaP, now());
-        if (later) {
-          state.lastRiver = later;
-          state.data.riverM = later.m;
-          state.data.trend = later.trend;
-          $("v-river").textContent = fmt(later.m, 2);
-          $("v-trend").textContent = fmt(later.trend, 1);
+        const blob = JSON.stringify(avisos || "").toLowerCase();
+        if (blob.includes("rio grande do sul") || blob.includes("\"rs\"") || blob.includes("lajeado")) {
+          alertStorm = blob.includes("tempestade") || blob.includes("chuva");
+          alertGrande = blob.includes("grande perigo") || blob.includes("vermelho");
         }
       } catch (_) {}
-    }).catch(() => {});
+
+      const rainWeek = rain7.reduce((s, x) => s + (Number(x) || 0), 0);
+      const rainPeak = Math.max(0, ...rain7.map(Number));
+      const rainDay = rain7[0] || 0;
+
+      const data = {
+        temp: avg(tempNow),
+        hum: avg(humNow),
+        wind: avg(windNow),
+        gust: avg(gust.length ? gust : windNow.map((w) => w * 1.4)),
+        hpa: avg(pressNow),
+        tmax: avg(tmax) ?? (bestDaily && bestDaily.temperature_2m_max ? bestDaily.temperature_2m_max.at(-7) : null),
+        tmin: avg(tmin) ?? (bestDaily && bestDaily.temperature_2m_min ? bestDaily.temperature_2m_min.at(-7) : null),
+        uv: avg(uv) ?? (bestDaily && bestDaily.uv_index_max ? bestDaily.uv_index_max[bestDaily.uv_index_max.length - 7] : 0),
+        cloud: avg(cloud),
+        soil: avg(soil),
+        code: median(codeNow),
+        isDay: (avg(dayFlag) ?? 1) >= 0.5,
+        riverM: river ? river.m : state.lastRiver.m,
+        riverAt: river ? river.at : state.lastRiver.at,
+        trend: river ? river.trend : state.lastRiver.trend,
+        rainDay,
+        rainWeek,
+        rainMonth,
+        rain7,
+        rainPeak,
+        times,
+        qNow,
+        qMean,
+        qMax,
+        qMin,
+        upstreamMax,
+        alertStorm,
+        alertGrande
+      };
+
+      if (bestDaily) {
+        const i0 = bestDaily.time ? Math.max(0, bestDaily.time.findIndex((t) => t >= iso)) : 0;
+        data.tmax = bestDaily.temperature_2m_max ? bestDaily.temperature_2m_max[i0] : data.tmax;
+        data.tmin = bestDaily.temperature_2m_min ? bestDaily.temperature_2m_min[i0] : data.tmin;
+        data.uv = bestDaily.uv_index_max ? bestDaily.uv_index_max[i0] : data.uv;
+        data.rainDay = bestDaily.precipitation_sum ? Number(bestDaily.precipitation_sum[i0]) || data.rainDay : data.rainDay;
+      }
+
+      data.chance = chance(data);
+      state.data = data;
+      state.target = data.chance;
+      try { paintDash(data); } catch (err) { console.error(err); }
+      return data;
+    };
+
+    await fill(core, 4500, (keys) => {
+      if (keys.some((k) => k === "bestSimple" || k === "flood" || k === "best" || k === "lajeadoP")) {
+        commitDash();
+      }
+    });
+    const first = commitDash();
+
+    fill(rest, 6000).then(() => {
+      const later = commitDash();
+      if (!quiet) {
+        if (later && (later.temp != null || later.riverM != null)) link.online();
+        else link.offline();
+      }
+    }).catch(() => {
+      if (!quiet) {
+        if (first && (first.temp != null || first.riverM != null)) link.online();
+        else link.offline();
+      }
+    });
   }
 
   function chance(d) {
@@ -705,7 +780,7 @@
       const day = iso.slice(8, 10);
       const el = document.createElement("div");
       el.className = "day";
-      el.innerHTML = `<span class="d">${day}</span><span class="mm">${fmt(mm, 1)} mm</span><span class="bar"><i style="width:${clamp((mm / peak) * 100, 4, 100)}%"></i></span>`;
+      el.innerHTML = `<span class="d">${day}</span><span class="mm">${fmt(mm, 1)}</span><small>mm</small><span class="bar"><i style="width:${clamp((mm / peak) * 100, 4, 100)}%"></i></span>`;
       week.appendChild(el);
     });
   }
@@ -797,37 +872,54 @@
     };
     apply(cur, false);
 
-    let drag = false;
-    let lastX = 0;
-    let lastY = 0;
-    let moved = 0;
+    const handle = el.closest(".knob-col") || el;
+    const hub = () => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    };
 
-    el.addEventListener("pointerdown", (ev) => {
+    let drag = false;
+    let lastAng = 0;
+    let moved = 0;
+    let pointerId = null;
+
+    handle.addEventListener("pointerdown", (ev) => {
+      if (ev.target.closest && ev.target.closest(".pwr")) return;
       ev.preventDefault();
       ev.stopPropagation();
       drag = true;
       moved = 0;
-      lastX = ev.clientX;
-      lastY = ev.clientY;
-      try { el.setPointerCapture(ev.pointerId); } catch (_) {}
+      pointerId = ev.pointerId;
+      const c = hub();
+      lastAng = Math.atan2(ev.clientY - c.y, ev.clientX - c.x) * 180 / Math.PI;
+      try { handle.setPointerCapture(ev.pointerId); } catch (_) {}
     });
-    el.addEventListener("pointermove", (ev) => {
-      if (!drag) return;
-      const dx = ev.clientX - lastX;
-      const dy = ev.clientY - lastY;
-      lastX = ev.clientX;
-      lastY = ev.clientY;
-      moved += Math.abs(dx) + Math.abs(dy);
-      apply(cur + dx * 1.8 - dy * 1.8, true);
+    handle.addEventListener("pointermove", (ev) => {
+      if (!drag || (pointerId != null && ev.pointerId !== pointerId)) return;
+      const c = hub();
+      const rx = ev.clientX - c.x;
+      const ry = ev.clientY - c.y;
+      const dist = Math.hypot(rx, ry);
+      const ang = Math.atan2(ry, rx) * 180 / Math.PI;
+      let delta = ang - lastAng;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      lastAng = ang;
+      moved += Math.abs(delta);
+      if (dist < 8) return;
+      if (Math.abs(delta) > 45) return;
+      apply(cur + delta, true);
     });
-    el.addEventListener("pointerup", (ev) => {
+    handle.addEventListener("pointerup", (ev) => {
+      if (pointerId != null && ev.pointerId !== pointerId) return;
       ev.preventDefault();
       ev.stopPropagation();
-      if (moved < 8 && onClick) onClick();
+      if (moved < 12 && onClick) onClick();
       drag = false;
+      pointerId = null;
     });
-    el.addEventListener("pointercancel", () => { drag = false; });
-    el.addEventListener("wheel", (ev) => {
+    handle.addEventListener("pointercancel", () => { drag = false; pointerId = null; });
+    handle.addEventListener("wheel", (ev) => {
       ev.preventDefault();
       apply(cur + (ev.deltaY > 0 ? 18 : -18), true);
     }, { passive: false });
@@ -838,32 +930,94 @@
     const audio = $("radio-audio");
     const panel = $("radio");
     const pwr = $("radio-pwr");
+    const fmtFreq = (mhz) => {
+      if (!Number.isFinite(mhz)) return "--.-";
+      return mhz.toFixed(1);
+    };
+
+    const mhzOf = (raw, name) => {
+      const tryNum = (v) => {
+        const n = Number(String(v ?? "").replace(",", "."));
+        if (!Number.isFinite(n) || n <= 0) return null;
+        if (n >= 87 && n <= 108) return Math.round(n * 10) / 10;
+        if (n >= 870 && n <= 1080) return Math.round(n) / 10;
+        if (n >= 87e6 && n <= 108e6) return Math.round(n / 1e5) / 10;
+        return null;
+      };
+      const fromName = String(name || "").match(/(\d{2,3}(?:[.,]\d)?)/);
+      return tryNum(raw) ?? tryNum(fromName && fromName[1]);
+    };
+
     let stations = [
-      { name: "INDEPENDENTE", freq: "91.7", city: "LAJEADO · VALE DO TAQUARI", url: "https://8563.brasilstream.com.br/stream" },
-      { name: "94 FM", freq: "94.0", city: "LAJEADO · VALE DO TAQUARI", url: "https://8567.brasilstream.com.br/stream" },
-      { name: "A HORA", freq: "102.9", city: "LAJEADO · VALE DO TAQUARI", url: "https://cast2.youngtech.radio.br/radio/8340/radio" },
-      { name: "GAZETA", freq: "107.9", city: "SANTA CRUZ", url: "https://hts03.brascast.com:7106/stream" },
-      { name: "GUAÍBA", freq: "101.3", city: "PORTO ALEGRE", url: "https://radio.saopaulo01.com.br:10827/stream" }
+      { name: "INDEPENDENTE", mhz: 91.7, city: "LAJEADO · VALE DO TAQUARI", url: "https://8563.brasilstream.com.br/stream" },
+      { name: "94 FM", mhz: 94.0, city: "LAJEADO · VALE DO TAQUARI", url: "https://8567.brasilstream.com.br/stream" },
+      { name: "UNIVATES", mhz: 95.1, city: "LAJEADO · VALE DO TAQUARI", url: "https://radio-nginx.univates.br/stream.m3u8" },
+      { name: "GUAÍBA", mhz: 101.3, city: "PORTO ALEGRE", url: "https://radio.saopaulo01.com.br:10827/stream" },
+      { name: "A HORA", mhz: 102.9, city: "LAJEADO · VALE DO TAQUARI", url: "https://cast2.youngtech.radio.br/radio/8340/radio" },
+      { name: "GAZETA", mhz: 107.9, city: "SANTA CRUZ", url: "https://hts03.brascast.com:7106/stream" }
     ];
     let idx = 0;
     let on = false;
     let vol = 0.72;
+    let hls = null;
+
+    const isHlsUrl = (u) => /\.m3u8(\?|$)/i.test(u || "");
+
+    const dropHls = () => {
+      if (!hls) return;
+      try { hls.destroy(); } catch (_) {}
+      hls = null;
+    };
+
+    const sortTune = () => {
+      const keep = stations[idx]?.url;
+      stations.sort((a, b) => a.mhz - b.mhz || a.name.localeCompare(b.name));
+      const i = stations.findIndex((s) => s.url === keep);
+      idx = i >= 0 ? i : 0;
+    };
+    sortTune();
 
     const paintStation = () => {
       const s = stations[idx] || stations[0];
       if (!s) return;
-      $("radio-freq").textContent = s.freq;
+      $("radio-freq").textContent = fmtFreq(s.mhz);
       $("radio-name").textContent = s.name;
       $("radio-city").textContent = s.city;
-      $("radio-band").textContent = /\d{3,}/.test(s.freq) && Number(s.freq) > 200 ? "AM" : "FM";
+      $("radio-band").textContent = s.mhz > 200 ? "AM" : "FM";
     };
 
     const play = async () => {
       const s = stations[idx];
       if (!s) return;
-      if (audio.src !== s.url) audio.src = s.url;
       audio.volume = vol;
+      dropHls();
       try {
+        if (isHlsUrl(s.url)) {
+          if (audio.canPlayType("application/vnd.apple.mpegurl")) {
+            audio.src = s.url;
+          } else if (window.Hls && window.Hls.isSupported()) {
+            hls = new window.Hls({ enableWorker: true });
+            hls.loadSource(s.url);
+            hls.attachMedia(audio);
+            await new Promise((resolve, reject) => {
+              const t = setTimeout(() => reject(new Error("hls-timeout")), 8000);
+              hls.once(window.Hls.Events.MANIFEST_PARSED, () => {
+                clearTimeout(t);
+                resolve();
+              });
+              hls.on(window.Hls.Events.ERROR, (_, data) => {
+                if (data && data.fatal) {
+                  clearTimeout(t);
+                  reject(new Error("hls"));
+                }
+              });
+            });
+          } else {
+            throw new Error("hls");
+          }
+        } else if (audio.src !== s.url) {
+          audio.src = s.url;
+        }
         await audio.play();
         on = true;
         panel.classList.add("on");
@@ -876,6 +1030,7 @@
 
     const stop = () => {
       audio.pause();
+      dropHls();
       on = false;
       panel.classList.remove("on");
       pwr.setAttribute("aria-pressed", "false");
@@ -944,9 +1099,11 @@
           rows.forEach((row) => {
             const url = row.url_resolved || row.url || "";
             if (row.lastcheckok !== 1 || row.hls === 1 || url.slice(0, 6) !== "https:") return;
+            const mhz = mhzOf(row.frequency ?? row.freq, row.name);
+            if (mhz == null) return;
             extra.push({
               name: String(row.name || "RADIO").replace(/\s+/g, " ").trim().toUpperCase().slice(0, 22),
-              freq: "FM",
+              mhz,
               city: String(row.state || "RS").toUpperCase(),
               url
             });
@@ -958,6 +1115,7 @@
               stations.push(s);
             }
           });
+          sortTune();
           paintStation();
           break;
         } catch (_) {}
@@ -979,20 +1137,16 @@
     requestAnimationFrame(tickNeedle);
     try { initRadio(); } catch (err) { console.error(err); }
 
-    try {
-      await syncTime();
-    } catch (err) {
-      console.error(err);
-    }
-    paintClock();
+    syncTime().catch((err) => console.error(err));
 
     try {
       await loadAll();
     } catch (err) {
       console.error(err);
+      link.offline();
     }
     setInterval(() => { syncTime().catch((err) => console.error(err)); }, 60 * 1000);
-    setInterval(() => { loadAll().catch((err) => console.error(err)); }, 3 * 60 * 1000);
+    setInterval(() => { loadAll({ quiet: true }).catch((err) => console.error(err)); }, 3 * 60 * 1000);
   }
 
   boot().catch((err) => console.error(err));

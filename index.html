@@ -9,6 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://api.open-meteo.com" />
+  <link rel="preconnect" href="https://flood-api.open-meteo.com" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -33,6 +35,11 @@
 
     <section class="core">
       <p class="gauge-banner">CHANCE DE ENCHENTE · 7 DIAS</p>
+      <div class="link-status" id="link-status" data-state="load">
+        <i class="link-led" id="link-led"></i>
+        <em id="link-label">BUSCANDO</em>
+        <span class="link-track"><b id="link-fill"></b></span>
+      </div>
       <div class="gauge" id="gauge">
         <img class="face" src="img/gauge-face.png" alt="" />
         <div class="needle-wrap" id="needle-wrap">
@@ -54,7 +61,7 @@
         <div class="lamp" id="wx-lamp" data-wx="sun"></div>
       </article>
       <article class="lcd"><em>NÍVEL DO RIO</em><span class="val"><b id="v-river">--</b><i>m</i></span></article>
-      <article class="lcd"><em>RIO SUBINDO</em><span class="val"><b id="v-trend">--</b><i>cm/h</i></span></article>
+      <article class="lcd"><em>TENDÊNCIA</em><span class="val"><b id="v-trend">--</b><i>cm/h</i></span></article>
       <article class="lcd"><em>CHUVA HOJE</em><span class="val"><b id="v-mm-d">--</b><i>mm</i></span></article>
       <article class="lcd"><em>CHUVA SEMANA</em><span class="val"><b id="v-mm-w">--</b><i>mm</i></span></article>
       <article class="lcd"><em>CHUVA MÊS</em><span class="val"><b id="v-mm-m">--</b><i>mm</i></span></article>
@@ -95,6 +102,7 @@
       <div class="week" id="week"></div>
     </section>
   </main>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
