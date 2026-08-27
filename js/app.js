@@ -2,20 +2,36 @@
   const LAT = -29.4669;
   const LON = -51.9614;
   const TZ = "America/Sao_Paulo";
-  const FLOOD_M = 19;
-  const PEAK_M = 33.66;
+  const COTA = {
+    atencao: 15,
+    alerta: 17,
+    inundacao: 19
+  };
+
+  /* Cotas SGB/SAH Taquari (m). Estrela e Lajeado compartilham a régua 86879300. */
+  const UPSTREAM = [
+    { slug: "santatereza", alt: ["santa-tereza"], flood: 15, alerta: 9, atencao: 6 },
+    { slug: "mucum", alt: [], flood: 18, alerta: 9, atencao: 6 },
+    { slug: "encantado", alt: [], flood: 12, alerta: 9, atencao: 6 },
+    { slug: "rocasales", alt: ["roca-sales"], flood: 18, alerta: 9, atencao: 6 },
+    { slug: "bomretirodosul", alt: ["bom-retiro-do-sul"], flood: 16.5, alerta: 14, atencao: 12 },
+    { slug: "taquari", alt: [], flood: 8.5, alerta: 7, atencao: 5.5 }
+  ];
+
+  const VALE = [
+    { slug: "santatereza", label: "S. TEREZA", x: 6, y: 28, flood: 15, alerta: 9, atencao: 6 },
+    { slug: "mucum", label: "MUÇUM", x: 20, y: 46, flood: 18, alerta: 9, atencao: 6 },
+    { slug: "encantado", label: "ENCANTADO", x: 34, y: 28, flood: 12, alerta: 9, atencao: 6 },
+    { slug: "rocasales", label: "ROCA SALES", x: 48, y: 48, flood: 18, alerta: 9, atencao: 6 },
+    { slug: "estrela", label: "ESTRELA", x: 58, y: 24, flood: 19, alerta: 17, atencao: 15, sameAs: "lajeado" },
+    { slug: "lajeado", label: "LAJEADO", x: 70, y: 42, flood: 19, alerta: 17, atencao: 15, home: true },
+    { slug: "bomretirodosul", label: "B. RETIRO", x: 84, y: 28, flood: 16.5, alerta: 14, atencao: 12 },
+    { slug: "taquari", label: "TAQUARI", x: 96, y: 50, flood: 8.5, alerta: 7, atencao: 5.5 }
+  ];
+
   const GEO = "4311403";
   const ANA_LAJEADO = "86879300";
   const ANA_MUCUM = "86510000";
-
-  const UPSTREAM = [
-    { slug: "santatereza", alt: ["santa-tereza"], flood: 15 },
-    { slug: "mucum", alt: [], flood: 18 },
-    { slug: "encantado", alt: [], flood: 12 },
-    { slug: "rocasales", alt: ["roca-sales"], flood: 18 },
-    { slug: "bomretirodosul", alt: ["bom-retiro-do-sul"], flood: 19 },
-    { slug: "taquari", alt: [], flood: 8.5 }
-  ];
 
   const MODELS = [
     "ecmwf_ifs025",
@@ -79,7 +95,11 @@
     needle: 0,
     target: 0,
     data: {},
-    lastRiver: { m: null, at: 0, trend: 0 }
+    lastRiver: { m: null, at: 0, trend: 0 },
+    riverPts: [],
+    vale: {},
+    alarmOn: true,
+    alarmBand: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -194,10 +214,6 @@
     }
   }
 
-  function proxyPairs(direct, proxied) {
-    return [direct, proxied].filter(Boolean);
-  }
-
   function todayBR(ms) {
     const p = new Intl.DateTimeFormat("pt-BR", {
       timeZone: TZ,
@@ -265,80 +281,43 @@
   }
 
   async function syncTime() {
-    const urls = [
-      ...proxyPairs(
-        "https://worldtimeapi.org/api/timezone/America/Sao_Paulo",
-        "/p/wtime/api/timezone/America/Sao_Paulo"
-      ),
-      ...proxyPairs(
-        "https://worldtimeapi.org/api/ip",
-        "/p/wtime/api/ip"
-      ),
-      ...proxyPairs(
-        "https://timeapi.io/api/Time/current/zone?timeZone=America/Sao_Paulo",
-        "/p/timeapi/api/Time/current/zone?timeZone=America/Sao_Paulo"
-      ),
-      ...proxyPairs(
-        "https://www.timeapi.io/api/Time/current/zone?timeZone=America/Sao_Paulo",
-        "/p/timeapi2/api/Time/current/zone?timeZone=America/Sao_Paulo"
-      ),
-      ...proxyPairs(
-        "https://timeapi.io/api/Time/current/coordinate?latitude=-29.4669&longitude=-51.9614",
-        "/p/timeapi/api/Time/current/coordinate?latitude=-29.4669&longitude=-51.9614"
-      ),
-      ...proxyPairs(
-        "https://worldclockapi.com/api/json/utc/now",
-        "/p/wclock/api/json/utc/now"
-      ),
-      "https://worldtimeapi.org/api/timezone/Etc/UTC",
-      "https://1.1.1.1/cdn-cgi/trace",
+    const candidates = [
+      "/p/timeapi/api/Time/current/zone?timeZone=America/Sao_Paulo",
+      "https://timeapi.io/api/Time/current/zone?timeZone=America/Sao_Paulo",
+      "/p/wtime/api/timezone/America/Sao_Paulo",
       "https://cloudflare.com/cdn-cgi/trace"
     ];
 
-    const marks = [];
-    const applyOffset = () => {
-      if (marks.length) state.offsetMs = median(marks);
-    };
-    await Promise.race([
-      new Promise((resolve) => {
-        let left = urls.length;
-        if (!left) resolve();
-        urls.forEach(async (u) => {
-          try {
-            const t0 = Date.now();
-            const j = await grab(u, 2500);
-            const t1 = Date.now();
-            let parsed = NaN;
-            if (typeof j === "string") {
-              const unix = j.match(/unixtime[=:](\d+)/i);
-              const ts = j.match(/\bts=([\d.]+)/);
-              if (unix) parsed = Number(unix[1]) * 1000;
-              else if (ts) parsed = Number(ts[1]) * 1000;
-            } else if (j && typeof j === "object") {
-              let stamp =
-                j.datetime ||
-                j.utc_datetime ||
-                j.dateTime ||
-                j.currentDateTime ||
-                j.utcDateTime;
-              if (!stamp && j.year) {
-                stamp = `${j.year}-${pad(j.month)}-${pad(j.day)}T${pad(j.hour)}:${pad(j.minute)}:${pad(j.seconds)}`;
-              }
-              parsed = Date.parse(stamp);
-              if (!Number.isFinite(parsed) && j.unixTime) parsed = Number(j.unixTime) * 1000;
-            }
-            if (Number.isFinite(parsed)) {
-              marks.push(parsed - (t0 + t1) / 2);
-              applyOffset();
-              resolve();
-            }
-          } catch (_) {}
-          if (--left <= 0) resolve();
-        });
-      }),
-      new Promise((r) => setTimeout(r, 1800))
-    ]);
-    applyOffset();
+    for (const u of candidates) {
+      try {
+        const t0 = Date.now();
+        const j = await grab(u, 2200);
+        const t1 = Date.now();
+        let parsed = NaN;
+        if (typeof j === "string") {
+          const unix = j.match(/unixtime[=:](\d+)/i);
+          const ts = j.match(/\bts=([\d.]+)/);
+          if (unix) parsed = Number(unix[1]) * 1000;
+          else if (ts) parsed = Number(ts[1]) * 1000;
+        } else if (j && typeof j === "object") {
+          let stamp =
+            j.datetime ||
+            j.utc_datetime ||
+            j.dateTime ||
+            j.currentDateTime ||
+            j.utcDateTime;
+          if (!stamp && j.year) {
+            stamp = `${j.year}-${pad(j.month)}-${pad(j.day)}T${pad(j.hour)}:${pad(j.minute)}:${pad(j.seconds)}`;
+          }
+          parsed = Date.parse(stamp);
+          if (!Number.isFinite(parsed) && j.unixTime) parsed = Number(j.unixTime) * 1000;
+        }
+        if (Number.isFinite(parsed)) {
+          state.offsetMs = parsed - (t0 + t1) / 2;
+          return;
+        }
+      } catch (_) {}
+    }
   }
 
   function now() {
@@ -395,6 +374,37 @@
       if (!best || rec.at > best.at) best = rec;
     }
     return best;
+  }
+
+  function seriesFromJson(j, hours = 48) {
+    if (!j || typeof j !== "object" || Array.isArray(j)) return [];
+    const cutoff = now() - hours * 36e5;
+    return Object.keys(j)
+      .map((t) => ({ t: Date.parse(String(t).replace(" ", "T")), v: Number(j[t]) }))
+      .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v) && p.t >= cutoff)
+      .sort((a, b) => a.t - b.t);
+  }
+
+  function seriesFromAna(xml, hours = 48) {
+    if (typeof xml !== "string") return [];
+    const cutoff = now() - hours * 36e5;
+    const blocks = xml.match(/<DadosHidrometereologicos[\s\S]*?<\/DadosHidrometereologicos>/g) || [];
+    const pts = [];
+    for (const b of blocks) {
+      const nivel = Number((b.match(/<Nivel>([^<]+)<\/Nivel>/) || [])[1]);
+      const hora = (b.match(/<DataHora>([^<]+)<\/DataHora>/) || [])[1];
+      if (!Number.isFinite(nivel)) continue;
+      const t = Date.parse(String(hora).trim().replace(" ", "T"));
+      if (!Number.isFinite(t) || t < cutoff) continue;
+      pts.push({ t, v: nivel / 100 });
+    }
+    pts.sort((a, b) => a.t - b.t);
+    return pts;
+  }
+
+  function pickSeries(a, b) {
+    if ((a || []).length >= (b || []).length) return a || [];
+    return b || [];
   }
 
   function inmetRain(j) {
@@ -455,17 +465,11 @@
       basin: `https://api.open-meteo.com/v1/forecast?latitude=-29.17,-29.24,-29.28,-29.47&longitude=-51.87,-51.87,-51.87,-51.96&daily=precipitation_sum&forecast_days=7&timezone=${encodeURIComponent(TZ)}`,
       geo: `https://geocoding-api.open-meteo.com/v1/search?name=Lajeado&count=1&language=pt&countryCode=BR`,
       elev: `https://api.open-meteo.com/v1/elevation?latitude=${LAT}&longitude=${LON}`,
-      lajeado: "https://nivelguaiba.com.br/lajeado.json",
       lajeadoP: "/p/ng/lajeado.json",
-      ana: `https://telemetriaws1.ana.gov.br/ServiceANA.asmx/DadosHidrometeorologicos?codEstacao=${ANA_LAJEADO}&dataInicio=${br}&dataFim=${br}`,
       anaP: `/p/ana?codEstacao=${ANA_LAJEADO}&dataInicio=${encodeURIComponent(br)}&dataFim=${encodeURIComponent(br)}`,
-      anaM: `https://telemetriaws1.ana.gov.br/ServiceANA.asmx/DadosHidrometeorologicos?codEstacao=${ANA_MUCUM}&dataInicio=${br}&dataFim=${br}`,
-      inmet: `https://apiprevmet3.inmet.gov.br/previsao/${GEO}`,
+      anaMP: `/p/ana?codEstacao=${ANA_MUCUM}&dataInicio=${encodeURIComponent(br)}&dataFim=${encodeURIComponent(br)}`,
       inmetP: `/p/inmet/previsao/${GEO}`,
-      inmetNow: `https://apiprevmet3.inmet.gov.br/estacao/proxima/${GEO}`,
-      avisos: "https://apiprevmet3.inmet.gov.br/avisos/ativos",
       avisosP: "/p/inmet/avisos/ativos",
-      wttr: "https://wttr.in/Lajeado+RS?format=j1",
       wttrP: "/p/wttr/Lajeado+RS?format=j1",
       allorigins: "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://nivelguaiba.com.br/lajeado.json")
     };
@@ -475,11 +479,8 @@
     });
 
     UPSTREAM.forEach((u) => {
-      jobs["ng_" + u.slug] = `https://nivelguaiba.com.br/${u.slug}.json`;
       jobs["ngp_" + u.slug] = `/p/ng/${u.slug}.json`;
-      u.alt.forEach((a, i) => {
-        jobs["nga_" + u.slug + i] = `https://nivelguaiba.com.br/${a}.json`;
-      });
+      jobs["ngao_" + u.slug] = "https://api.allorigins.win/raw?url=" + encodeURIComponent(`https://nivelguaiba.com.br/${u.slug}.json`);
     });
 
     const unique = new Map();
@@ -569,12 +570,12 @@
       }
       let rain7 = times.map((t) => rainByDate[t] ?? Number(bestDaily && bestDaily.precipitation_sum && bestDaily.precipitation_sum[bestDaily.time.indexOf(t)]) ?? 0);
 
-      if (bag.wttr && bag.wttr.weather) {
-        const extra = bag.wttr.weather.slice(0, 7).map((d) => Number(d.precipMM));
+      if (bag.wttrP && bag.wttrP.weather) {
+        const extra = bag.wttrP.weather.slice(0, 7).map((d) => Number(d.precipMM));
         extra.forEach((mm, i) => {
           if (Number.isFinite(mm) && rain7[i] != null) rain7[i] = (rain7[i] + mm) / 2;
         });
-        const cc = bag.wttr.current_condition && bag.wttr.current_condition[0];
+        const cc = bag.wttrP.current_condition && bag.wttrP.current_condition[0];
         if (cc) {
           if (cc.temp_C) tempNow.push(Number(cc.temp_C));
           if (cc.humidity) humNow.push(Number(cc.humidity));
@@ -582,9 +583,8 @@
           if (cc.pressure) pressNow.push(Number(cc.pressure));
         }
       }
-      ingestOm(bag.wttrP && typeof bag.wttrP === "object" ? bag.wttrP : null);
 
-      const inmet = bag.inmet || bag.inmetP;
+      const inmet = bag.inmetP;
       inmetRain(inmet).forEach((row, i) => {
         if (rain7[i] != null && row.mm) rain7[i] = (rain7[i] + row.mm) / 2;
       });
@@ -604,14 +604,14 @@
         }
       }
 
-      let river = parseRiverJson(bag.lajeado) || parseRiverJson(bag.lajeadoP);
+      let river = parseRiverJson(bag.lajeadoP);
       if (!river && bag.allorigins) {
         try {
           const raw = bag.allorigins;
           river = parseRiverJson(typeof raw === "string" ? JSON.parse(raw) : raw);
         } catch (_) {}
       }
-      const ana = parseAnaXml(bag.ana, ms) || parseAnaXml(bag.anaP, ms);
+      const ana = parseAnaXml(bag.anaP, ms);
       if (ana) {
         if (!river || ana.at >= (river.at || 0)) {
           river = { m: ana.m, at: ana.at, trend: river ? river.trend : 0 };
@@ -619,14 +619,39 @@
       }
       if (river) state.lastRiver = river;
 
+      const jsonSeries = seriesFromJson(bag.lajeadoP);
+      const anaSeries = seriesFromAna(bag.anaP);
+      const riverPts = pickSeries(jsonSeries, anaSeries);
+      if (riverPts.length) state.riverPts = riverPts;
+
+      const valeRiver = (slug) => {
+        const j = bag["ngp_" + slug] || bag["ngao_" + slug];
+        if (!j) return null;
+        try {
+          return parseRiverJson(typeof j === "string" ? JSON.parse(j) : j);
+        } catch (_) {
+          return parseRiverJson(j);
+        }
+      };
+
+      const vale = { lajeado: river ? river.m : state.lastRiver.m };
+      UPSTREAM.forEach((u) => {
+        const r = valeRiver(u.slug);
+        if (r) vale[u.slug] = r.m;
+      });
+      vale.estrela = vale.estrela ?? vale.lajeado;
+      state.vale = vale;
+
       let upstreamMax = 0;
       UPSTREAM.forEach((u) => {
-        const j = bag["ng_" + u.slug] || bag["ngp_" + u.slug] || bag["nga_" + u.slug + "0"];
-        const r = parseRiverJson(j);
+        const r = valeRiver(u.slug);
         if (r) upstreamMax = Math.max(upstreamMax, (r.m / u.flood) * 100);
       });
-      const mucumAna = parseAnaXml(bag.anaM, ms);
-      if (mucumAna) upstreamMax = Math.max(upstreamMax, (mucumAna.m / 18) * 100);
+      const mucumAna = parseAnaXml(bag.anaMP, ms);
+      if (mucumAna) {
+        const mucumFlood = UPSTREAM.find((u) => u.slug === "mucum")?.flood || 18;
+        upstreamMax = Math.max(upstreamMax, (mucumAna.m / mucumFlood) * 100);
+      }
 
       const flood = bag.flood && bag.flood.daily ? bag.flood.daily : {};
       const q = (k) => (Array.isArray(flood[k]) ? flood[k].map(Number) : []);
@@ -637,7 +662,7 @@
 
       let alertStorm = false;
       let alertGrande = false;
-      const avisos = bag.avisos || bag.avisosP;
+      const avisos = bag.avisosP;
       try {
         const blob = JSON.stringify(avisos || "").toLowerCase();
         if (blob.includes("rio grande do sul") || blob.includes("\"rs\"") || blob.includes("lajeado")) {
@@ -677,6 +702,8 @@
         qMax,
         qMin,
         upstreamMax,
+        vale,
+        riverPts: state.riverPts,
         alertStorm,
         alertGrande
       };
@@ -689,7 +716,8 @@
         data.rainDay = bestDaily.precipitation_sum ? Number(bestDaily.precipitation_sum[i0]) || data.rainDay : data.rainDay;
       }
 
-      data.chance = chance(data);
+      data.projM = projectLevel(data);
+      data.chance = levelToGauge(data.projM);
       state.data = data;
       state.target = data.chance;
       try { paintDash(data); } catch (err) { console.error(err); }
@@ -717,40 +745,235 @@
     });
   }
 
-  function chance(d) {
-    const level = d.riverM ?? 13;
+  function levelToGauge(m) {
+    if (m == null || !Number.isFinite(m) || m <= 0) return 0;
+    if (m < COTA.atencao) return 40 * (m / COTA.atencao);
+    if (m < COTA.alerta) return 40 + 30 * ((m - COTA.atencao) / (COTA.alerta - COTA.atencao));
+    if (m < COTA.inundacao) return 70 + 30 * ((m - COTA.alerta) / (COTA.inundacao - COTA.alerta));
+    return 100;
+  }
+
+  function projectLevel(d) {
+    const m = d.riverM;
+    if (m == null || !Number.isFinite(m)) return null;
     const trend = d.trend ?? 0;
-    const projected = level + clamp(trend * 0.01 * 30, -1.2, 3.5);
-
-    const close = (m) => {
-      if (m >= FLOOD_M) {
-        return 58 + 40 * clamp((m - FLOOD_M) / (PEAK_M - FLOOD_M), 0, 1);
-      }
-      return 38 * Math.pow(m / FLOOD_M, 2.15);
-    };
-
-    let p = close(Math.max(level, projected)) * 0.32;
-    p += Math.min(26, (d.rainWeek || 0) * 0.12);
-    p += (d.rainPeak || Math.max(0, ...(d.rain7 || [0]))) >= 50
-      ? Math.min(12, ((Math.max(0, ...(d.rain7 || [0])) - 40) * 0.16))
-      : 0;
-
-    const qMean = Math.max(0, ...(d.qMean || [0]));
+    const in48h = m + clamp(trend * 0.01 * 48, -2, 6);
+    let lift = 0;
+    const rainWeek = d.rainWeek || 0;
+    const rainPeak = d.rainPeak || Math.max(0, ...(d.rain7 || [0]));
+    if (rainWeek >= 80) lift += 0.5;
+    if (rainPeak >= 50) lift += 0.4;
     const qMax = Math.max(0, ...(d.qMax || [0]));
-    const qMin = Math.min(...(d.qMin || [0]).filter(Number.isFinite).concat([qMean]));
-    const scale = (q) => clamp((q - 700) / 8300, 0, 1);
-    if (qMax > 0 || qMean > 0) {
-      p += (0.22 * scale(qMin) + 0.5 * scale(qMean) + 0.28 * scale(qMax)) * 42;
+    if (qMax >= 5000) lift += 0.8;
+    if (qMax >= 8000) lift += 1.2;
+    if ((d.upstreamMax || 0) >= 90) lift += 0.7;
+    if (d.alertGrande) lift += 0.8;
+    else if (d.alertStorm) lift += 0.3;
+    const rising = trend > 0.15;
+    return Math.max(m, in48h) + (rising ? lift : lift * 0.25);
+  }
+
+  function riskFromLevel(m) {
+    if (m == null || !Number.isFinite(m)) return "low";
+    if (m >= COTA.inundacao) return "high";
+    if (m >= COTA.alerta) return "mid";
+    if (m >= COTA.atencao) return "watch";
+    return "low";
+  }
+
+  function riskText(risk) {
+    if (risk === "high") return "ENCHENTE";
+    if (risk === "mid") return "ALERTA";
+    if (risk === "watch") return "ATENÇÃO";
+    return "NORMAL";
+  }
+
+  function fmtStamp(ms) {
+    if (!ms || !Number.isFinite(ms)) return "--:--";
+    try {
+      const p = new Intl.DateTimeFormat("pt-BR", {
+        timeZone: TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+        hour12: false
+      }).formatToParts(new Date(ms));
+      const g = (t) => p.find((x) => x.type === t)?.value || "--";
+      return `${g("hour")}:${g("minute")}  ${g("day")}/${g("month")}`;
+    } catch (_) {
+      return "--:--";
     }
+  }
 
-    p += Math.min(10, (d.upstreamMax || 0) * 0.09);
-    if (trend > 0.4) p += Math.min(10, trend * 1.4);
-    if (trend < -0.4) p -= Math.min(7, Math.abs(trend) * 1.1);
-    if (d.alertStorm) p += 6;
-    if (d.alertGrande) p += 12;
-    if ((d.soil || 0) > 40) p += 3;
+  function cityRisk(m, city) {
+    if (m == null || !Number.isFinite(m) || !city || !city.flood) return "low";
+    const flood = city.flood;
+    const alerta = city.alerta != null ? city.alerta : flood * (COTA.alerta / COTA.inundacao);
+    const atencao = city.atencao != null ? city.atencao : flood * (COTA.atencao / COTA.inundacao);
+    if (m >= flood) return "high";
+    if (m >= alerta) return "mid";
+    if (m >= atencao) return "watch";
+    return "low";
+  }
 
-    return clamp(p, 0.2, 99.6);
+  function drawTrace(pts) {
+    const c = $("river-trace");
+    if (!c) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = Math.max(40, c.clientWidth || 120);
+    const cssH = Math.max(48, c.clientHeight || 96);
+    c.width = Math.floor(cssW * dpr);
+    c.height = Math.floor(cssH * dpr);
+    const tctx = c.getContext("2d");
+    tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    tctx.clearRect(0, 0, cssW, cssH);
+    const vals = (pts || []).map((p) => p.v).filter(Number.isFinite);
+    const dataMin = vals.length ? Math.min(...vals) : 12;
+    const dataMax = vals.length ? Math.max(...vals) : 14;
+    const lo = Math.min(10, Math.floor(dataMin) - 1);
+    const hi = Math.max(20, Math.ceil(Math.max(dataMax, 19)) + 1);
+    const padL = 36;
+    const yOf = (m) => {
+      const t = (clamp(m, lo, hi) - lo) / Math.max(0.5, hi - lo);
+      return cssH - 10 - t * (cssH - 20);
+    };
+    [
+      [15, "rgba(255,224,138,0.55)", "#ffe08a"],
+      [17, "rgba(255,179,71,0.6)", "#ffb347"],
+      [19, "rgba(255,107,94,0.7)", "#ff8a80"]
+    ].forEach(([m, col, lab]) => {
+      const y = yOf(m);
+      tctx.strokeStyle = col;
+      tctx.lineWidth = 1;
+      tctx.setLineDash([3, 3]);
+      tctx.beginPath();
+      tctx.moveTo(padL + 2, y);
+      tctx.lineTo(cssW - 4, y);
+      tctx.stroke();
+      tctx.setLineDash([]);
+      tctx.fillStyle = "#050b08";
+      tctx.fillRect(0, y - 8, padL, 16);
+      tctx.fillStyle = lab;
+      tctx.font = "11px 'Share Tech Mono', monospace";
+      tctx.textBaseline = "middle";
+      tctx.fillText(String(m), 8, y);
+    });
+    if (!pts || pts.length < 2) return;
+    const t0 = pts[0].t;
+    const span = Math.max(1, pts[pts.length - 1].t - t0);
+    tctx.beginPath();
+    pts.forEach((p, i) => {
+      const x = padL + ((p.t - t0) / span) * (cssW - padL - 4);
+      const y = yOf(p.v);
+      if (i === 0) tctx.moveTo(x, y);
+      else tctx.lineTo(x, y);
+    });
+    tctx.strokeStyle = "#9cff6a";
+    tctx.lineWidth = 2;
+    tctx.lineJoin = "round";
+    tctx.lineCap = "round";
+    tctx.stroke();
+  }
+
+  function paintVale(levels) {
+    const g = $("vale-dots");
+    const list = $("vale-list");
+    const src = levels || {};
+    const rows = VALE.map((c) => {
+      const m = src[c.slug] ?? (c.sameAs ? src[c.sameAs] : null);
+      const risk = cityRisk(m, c);
+      return { ...c, m, risk };
+    });
+    if (g) {
+      g.innerHTML = rows.map((c, i) => {
+        const n = i + 1;
+        return [
+          `<circle class="vale-dot" cx="${c.x}" cy="${c.y}" r="${c.home ? 4.4 : 4}" data-risk="${c.risk}"></circle>`,
+          `<text class="vale-num" x="${c.x}" y="${c.y + 0.35}" text-anchor="middle" dominant-baseline="middle">${n}</text>`
+        ].join("");
+      }).join("");
+    }
+    if (list) {
+      list.innerHTML = rows.map((c, i) => {
+        const home = c.home ? " home" : "";
+        const meters = c.m != null ? `${fmt(c.m, 1)} m` : "--";
+        const cota = c.flood != null ? `cota ${fmt(c.flood, c.flood % 1 ? 1 : 0)}` : "";
+        return `<li class="${home.trim()}" data-risk="${c.risk}"><i>${i + 1}</i><span>${c.label}</span><b>${meters}</b><em>${cota}</em></li>`;
+      }).join("");
+    }
+  }
+
+  let audioCtx = null;
+  function getAudio() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!audioCtx) audioCtx = new AC();
+    return audioCtx;
+  }
+
+  function alarmBandOf(m) {
+    if (m == null || !Number.isFinite(m)) return 0;
+    if (m >= COTA.inundacao) return 2;
+    if (m >= COTA.alerta) return 1;
+    return 0;
+  }
+
+  function beepAlarm(band) {
+    const ac = getAudio();
+    if (!ac) return;
+    if (ac.state === "suspended") ac.resume().catch(() => {});
+    const chirp = (freq, at, dur) => {
+      const o = ac.createOscillator();
+      const g = ac.createGain();
+      o.type = "square";
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.07, at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(g);
+      g.connect(ac.destination);
+      o.start(at);
+      o.stop(at + dur + 0.02);
+    };
+    const t0 = ac.currentTime;
+    chirp(band >= 2 ? 980 : 740, t0, 0.16);
+    chirp(band >= 2 ? 1240 : 880, t0 + 0.2, 0.18);
+    if (band >= 2) chirp(1480, t0 + 0.42, 0.22);
+  }
+
+  function checkAlarm(m) {
+    if (m == null || !Number.isFinite(m)) return;
+    const band = alarmBandOf(m);
+    if (state.alarmBand == null) {
+      state.alarmBand = band;
+      return;
+    }
+    if (state.alarmOn && band > state.alarmBand) beepAlarm(band);
+    state.alarmBand = band;
+  }
+
+  function initAlarm() {
+    const btn = $("alarm-btn");
+    const saved = localStorage.getItem("alarmOn");
+    state.alarmOn = saved == null ? true : saved !== "0";
+    if (btn) {
+      btn.setAttribute("aria-pressed", state.alarmOn ? "true" : "false");
+      btn.textContent = state.alarmOn ? "ALARME" : "MUDO";
+      btn.addEventListener("click", () => {
+        state.alarmOn = !state.alarmOn;
+        localStorage.setItem("alarmOn", state.alarmOn ? "1" : "0");
+        btn.setAttribute("aria-pressed", state.alarmOn ? "true" : "false");
+        btn.textContent = state.alarmOn ? "ALARME" : "MUDO";
+        const ac = getAudio();
+        if (ac && ac.state === "suspended") ac.resume().catch(() => {});
+      });
+    }
+    const unlock = () => {
+      const ac = getAudio();
+      if (ac && ac.state === "suspended") ac.resume().catch(() => {});
+    };
+    document.addEventListener("pointerdown", unlock, { once: true });
   }
 
   function paintDash(d) {
@@ -764,6 +987,8 @@
     $("v-uv").textContent = fmt(d.uv, 1);
     $("v-cloud").textContent = fmt(d.cloud, 0);
     $("v-river").textContent = fmt(d.riverM, 2);
+    const stamp = $("v-river-at");
+    if (stamp) stamp.textContent = fmtStamp(d.riverAt);
     $("v-trend").textContent = fmt(d.trend, 1);
     $("v-mm-d").textContent = fmt(d.rainDay, 1);
     $("v-mm-w").textContent = fmt(d.rainWeek, 1);
@@ -782,6 +1007,18 @@
       el.className = "day";
       el.innerHTML = `<span class="d">${day}</span><span class="mm">${fmt(mm, 1)}</span><small>mm</small><span class="bar"><i style="width:${clamp((mm / peak) * 100, 4, 100)}%"></i></span>`;
       week.appendChild(el);
+    });
+
+    drawTrace(d.riverPts || state.riverPts);
+    paintVale(d.vale || state.vale);
+    syncCotaLegend(d.riverM);
+    checkAlarm(d.riverM);
+  }
+
+  function syncCotaLegend(m) {
+    const risk = riskFromLevel(m);
+    document.querySelectorAll(".cota-legend li").forEach((li) => {
+      li.classList.toggle("on", li.dataset.band === risk);
     });
   }
 
@@ -803,9 +1040,10 @@
     ctx.clearRect(0, 0, w, h);
     const cx = w / 2;
     const cy = h / 2;
-    const len = Math.min(w, h) * 0.36;
-    const start = -120;
-    const ang = ((start + (value / 100) * 240) - 90) * Math.PI / 180;
+    const len = Math.min(w, h) * 0.38;
+    const v = clamp(value, 0, 100);
+    const deg = 120 + (v / 100) * 300;
+    const ang = deg * Math.PI / 180;
 
     ctx.save();
     ctx.translate(cx, cy);
@@ -828,32 +1066,31 @@
     ctx.restore();
   }
 
-  function tickNeedle(ts) {
+  function tickNeedle() {
     try {
-      const wobble = Math.sin(ts / 420) * 0.35 + Math.sin(ts / 1100) * 0.18;
-      const liveRiver = state.lastRiver.m != null
-        ? state.lastRiver.m + (state.lastRiver.trend || 0) * 0.01 * ((now() - (state.lastRiver.at || now())) / 36e5)
+      const liveRiver = state.lastRiver.m != null && Number.isFinite(state.lastRiver.m)
+        ? state.lastRiver.m
         : null;
-      if (liveRiver != null && state.data.chance != null) {
-        const d = { ...state.data, riverM: liveRiver };
-        state.target = clamp(chance(d) + wobble, 0, 100);
+      const current = liveRiver != null ? liveRiver : state.data.riverM;
+      if (current != null && Number.isFinite(current)) {
+        state.target = levelToGauge(current);
       } else if (state.data.chance != null) {
-        state.target = clamp(state.data.chance + wobble, 0, 100);
+        state.target = state.data.chance;
       }
 
-      const k = 0.045;
-      state.needle += (state.target - state.needle) * k;
-      drawNeedle(state.needle);
-      $("v-pct").textContent = fmt(state.needle, 1);
-      document.title = `Enchente ${fmt(state.needle, 0)}%`;
+      const shown = clamp(state.target, 0, 100);
+      state.needle = shown;
+      drawNeedle(shown);
+      $("v-pct").textContent = fmt(shown, 1);
+      document.title = `Enchente ${fmt(shown, 0)}%`;
 
       const g = $("gauge");
-      const risk = state.needle >= 70 ? "high" : state.needle >= 40 ? "mid" : "low";
+      const risk = riskFromLevel(current);
       g.dataset.risk = risk;
       const riskEl = $("v-risk");
-      if (riskEl) {
-        riskEl.textContent = risk === "high" ? "ENCHENTE" : risk === "mid" ? "ALERTA" : "NORMAL";
-      }
+      if (riskEl) riskEl.textContent = riskText(risk);
+      syncCotaLegend(current);
+      checkAlarm(current);
     } catch (err) {
       console.error(err);
     }
@@ -1087,8 +1324,8 @@
     paintStation();
 
     const radioUrls = [
-      "https://de1.api.radio-browser.info/json/stations/search?geo_lat=-29.47&geo_long=-51.96&geo_distance=90000&hidebroken=true&limit=25&order=clickcount&reverse=true",
-      "/p/radio/json/stations/search?geo_lat=-29.47&geo_long=-51.96&geo_distance=90000&hidebroken=true&limit=25&order=clickcount&reverse=true"
+      "/p/radio/json/stations/search?geo_lat=-29.47&geo_long=-51.96&geo_distance=90000&hidebroken=true&limit=25&order=clickcount&reverse=true",
+      "https://de1.api.radio-browser.info/json/stations/search?geo_lat=-29.47&geo_long=-51.96&geo_distance=90000&hidebroken=true&limit=25&order=clickcount&reverse=true"
     ];
     (async () => {
       for (const u of radioUrls) {
@@ -1131,13 +1368,19 @@
     }
     window.addEventListener("resize", () => {
       try { resizeCanvas(); } catch (err) { console.error(err); }
+      try { drawTrace(state.riverPts); } catch (err) { console.error(err); }
     });
+    try { initAlarm(); } catch (err) { console.error(err); }
+    try { paintVale({}); } catch (err) { console.error(err); }
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    }
     paintClock();
     setInterval(paintClock, 200);
     requestAnimationFrame(tickNeedle);
     try { initRadio(); } catch (err) { console.error(err); }
 
-    syncTime().catch((err) => console.error(err));
+    syncTime().catch(() => {});
 
     try {
       await loadAll();
@@ -1145,7 +1388,7 @@
       console.error(err);
       link.offline();
     }
-    setInterval(() => { syncTime().catch((err) => console.error(err)); }, 60 * 1000);
+    setInterval(() => { syncTime().catch(() => {}); }, 10 * 60 * 1000);
     setInterval(() => { loadAll({ quiet: true }).catch((err) => console.error(err)); }, 3 * 60 * 1000);
   }
 

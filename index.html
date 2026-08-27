@@ -4,8 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#050505" />
+  <meta name="description" content="Painel do Rio Taquari em Lajeado: cotas, clima e rádio do Vale." />
   <title>Enchente Lajeado</title>
   <link rel="icon" href="img/favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="img/icon-192.png" />
+  <link rel="manifest" href="manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
@@ -34,11 +37,12 @@
     </section>
 
     <section class="core">
-      <p class="gauge-banner">CHANCE DE ENCHENTE · 7 DIAS</p>
+      <p class="gauge-banner">RISCO · COTAS DO TAQUARI</p>
       <div class="link-status" id="link-status" data-state="load">
         <i class="link-led" id="link-led"></i>
         <em id="link-label">BUSCANDO</em>
         <span class="link-track"><b id="link-fill"></b></span>
+        <button type="button" class="alarm-btn" id="alarm-btn" title="Alarme de cota" aria-pressed="true">ALARME</button>
       </div>
       <div class="gauge" id="gauge">
         <img class="face" src="img/gauge-face.png" alt="" />
@@ -53,6 +57,12 @@
           <strong id="v-risk">---</strong>
         </div>
       </div>
+      <ul class="cota-legend" aria-label="Cotas oficiais Lajeado / Estrela">
+        <li data-band="watch"><b>15 m</b><span>ATENÇÃO</span></li>
+        <li data-band="mid"><b>17 m</b><span>ALERTA</span></li>
+        <li data-band="high"><b>19 m</b><span>INUNDAÇÃO</span><i>100%</i></li>
+      </ul>
+      <p class="cota-note">Régua Estrela/Lajeado · SGB / Defesa Civil · 100% = cota de inundação</p>
     </section>
 
     <section class="side side-r">
@@ -60,7 +70,11 @@
         <em>TEMPO AGORA</em>
         <div class="lamp" id="wx-lamp" data-wx="sun"></div>
       </article>
-      <article class="lcd"><em>NÍVEL DO RIO</em><span class="val"><b id="v-river">--</b><i>m</i></span></article>
+      <article class="lcd">
+        <em>NÍVEL DO RIO</em>
+        <span class="val"><b id="v-river">--</b><i>m</i></span>
+        <small class="stamp" id="v-river-at">--:--</small>
+      </article>
       <article class="lcd"><em>TENDÊNCIA</em><span class="val"><b id="v-trend">--</b><i>cm/h</i></span></article>
       <article class="lcd"><em>CHUVA HOJE</em><span class="val"><b id="v-mm-d">--</b><i>mm</i></span></article>
       <article class="lcd"><em>CHUVA SEMANA</em><span class="val"><b id="v-mm-w">--</b><i>mm</i></span></article>
@@ -97,10 +111,32 @@
       <audio id="radio-audio" preload="none"></audio>
     </section>
 
+    <div class="river-row">
+      <section class="trace-wrap lcd">
+        <em>TAQUARI · 48 H</em>
+        <canvas id="river-trace"></canvas>
+      </section>
+      <section class="vale-wrap lcd">
+        <em>VALE DO TAQUARI</em>
+        <svg class="vale-map" id="vale-map" viewBox="-3 8 106 58" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa do Vale do Taquari">
+          <path class="river-line" d="M4 30 C 14 16, 18 50, 28 36 S 40 14, 50 44 S 58 16, 68 40 S 80 22, 96 50" />
+          <g id="vale-dots"></g>
+        </svg>
+        <ul class="vale-list" id="vale-list"></ul>
+      </section>
+    </div>
+
     <section class="week-wrap">
       <em>CHUVA · PREVISÃO 7 DIAS</em>
       <div class="week" id="week"></div>
     </section>
+
+    <nav class="help-bar" aria-label="Emergência">
+      <a href="tel:199">199 <small>DEFESA CIVIL</small></a>
+      <a href="tel:193">193 <small>BOMBEIROS</small></a>
+      <a href="tel:192">192 <small>SAMU</small></a>
+      <a href="tel:190">190 <small>BRIGADA</small></a>
+    </nav>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
   <script src="js/app.js"></script>
