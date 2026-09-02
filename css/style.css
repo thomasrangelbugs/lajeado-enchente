@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #050505;
   --lcd: #07140c;
   --led: #9cff6a;
@@ -7,6 +7,8 @@
   --red: #ff3b2f;
   --glow: 0 0 18px rgba(156, 255, 106, 0.35);
   --risk: 20;
+  --font-ui: "IBM Plex Mono", ui-monospace, monospace;
+  --font-num: "Sora", "Segoe UI", sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -16,7 +18,7 @@ html, body {
   height: auto;
   background: #020202;
   color: var(--led);
-  font-family: "Share Tech Mono", ui-monospace, monospace;
+  font-family: var(--font-ui);
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-text-size-adjust: 100%;
@@ -25,8 +27,8 @@ html, body {
 
 em {
   font-style: normal;
-  font-family: "Share Tech Mono", monospace;
-  letter-spacing: 0.22em;
+  font-family: var(--font-ui);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -49,11 +51,10 @@ body::before {
   height: auto;
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: minmax(132px, 18vw) minmax(0, 1fr) minmax(132px, 18vw);
-  grid-template-rows: minmax(280px, 42vh) auto auto auto auto auto;
+  grid-template-columns: minmax(118px, 14vw) minmax(0, 1fr) minmax(118px, 14vw);
+  grid-template-rows: auto auto auto auto auto;
   grid-template-areas:
     "left gauge right"
-    "left clock right"
     "radio radio radio"
     "charts charts charts"
     "week week week"
@@ -67,7 +68,6 @@ body::before {
 .side-l { grid-area: left; }
 .side-r { grid-area: right; }
 .core { grid-area: gauge; }
-.clock-lcd { grid-area: clock; }
 .radio { grid-area: radio; }
 .week-wrap { grid-area: week; }
 .river-row { grid-area: charts; }
@@ -85,10 +85,11 @@ body::before {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 4px;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .gauge-banner {
@@ -185,15 +186,16 @@ body::before {
 
 .gauge {
   position: relative;
-  flex: 1 1 auto;
-  width: auto;
+  flex: 0 0 auto;
+  width: min(100%, 50vh, 440px);
+  max-width: min(100%, 50vh, 440px);
+  min-width: min(240px, 100%);
   height: auto;
-  max-width: min(100%, 42vh);
-  max-height: calc(100% - 72px);
   aspect-ratio: 1;
   border-radius: 50%;
   overflow: hidden;
   filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.7));
+  margin: 2px 0 4px;
 }
 
 .gauge .face {
@@ -263,7 +265,7 @@ body::before {
 }
 
 .pct b {
-  font-family: Orbitron, sans-serif;
+  font-family: var(--font-num);
   font-weight: 800;
   font-size: clamp(11px, 1.7vw, 16px);
   letter-spacing: 0.04em;
@@ -300,11 +302,40 @@ body::before {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 6px 8px;
-  margin: 6px 0 0;
+  gap: 5px 6px;
+  margin: 2px 0 0;
   padding: 0;
-  width: min(320px, 96%);
+  width: min(360px, 96%);
   flex: 0 0 auto;
+}
+
+.cota-note {
+  margin: 2px 0 0;
+  padding: 0 6px;
+  width: min(360px, 96%);
+  flex: 0 0 auto;
+  text-align: center;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--led-dim);
+  line-height: 1.35;
+}
+
+.forecast {
+  width: min(360px, 96%);
+  flex: 0 0 auto;
+  margin-top: 4px;
+  padding: 6px 10px 8px;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 40%),
+    #050b08;
+  box-shadow: inset 0 0 0 1px rgba(140, 255, 110, 0.14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  text-align: center;
 }
 
 .cota-legend li {
@@ -315,12 +346,12 @@ body::before {
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.35);
   box-shadow: inset 0 0 0 1px rgba(140, 255, 110, 0.1);
-  font-family: "Share Tech Mono", monospace;
+  font-family: var(--font-ui);
   line-height: 1.1;
 }
 
 .cota-legend li b {
-  font-family: Orbitron, sans-serif;
+  font-family: var(--font-num);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -334,7 +365,7 @@ body::before {
 
 .cota-legend li i {
   font-style: normal;
-  font-family: Orbitron, sans-serif;
+  font-family: var(--font-num);
   font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -374,16 +405,84 @@ body::before {
   box-shadow: inset 0 0 0 1px rgba(255, 80, 60, 0.85), 0 0 12px rgba(255, 60, 40, 0.35);
 }
 
-.cota-note {
-  margin: 4px 0 0;
-  padding: 0 6px;
-  width: min(320px, 96%);
-  flex: 0 0 auto;
-  text-align: center;
+.forecast > em {
   font-size: 8px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.18em;
+  color: var(--amber);
+  opacity: 0.9;
+}
+
+.forecast-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.forecast-val {
+  display: flex;
+  align-items: baseline;
+  gap: 0.15em;
+}
+
+.forecast-val b {
+  font-family: var(--font-num);
+  font-size: clamp(18px, 2.6vw, 26px);
+  font-weight: 800;
+  color: var(--led);
+  text-shadow: var(--glow);
+  letter-spacing: 0.04em;
+}
+
+.forecast-val i {
+  font-style: normal;
+  font-size: 0.55em;
+  color: var(--led-dim);
+}
+
+.forecast-eta {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: #c9b48a;
+}
+
+.forecast > strong {
+  font-family: var(--font-num);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: #9cff6a;
+  margin-top: 2px;
+}
+
+.forecast > small {
+  font-family: var(--font-ui);
+  font-size: 8px;
+  letter-spacing: 0.08em;
   color: var(--led-dim);
   line-height: 1.35;
+  max-width: 100%;
+}
+
+.forecast[data-risk="watch"] > strong,
+.forecast[data-risk="watch"] .forecast-val b { color: #ffe08a; text-shadow: 0 0 10px rgba(255, 224, 138, 0.35); }
+.forecast[data-risk="mid"] > strong,
+.forecast[data-risk="mid"] .forecast-val b { color: var(--amber); text-shadow: 0 0 10px rgba(255, 179, 71, 0.4); }
+.forecast[data-risk="high"] > strong,
+.forecast[data-risk="high"] .forecast-val b { color: #ff8a80; text-shadow: 0 0 12px rgba(255, 80, 60, 0.45); }
+.forecast[data-risk="high"] {
+  box-shadow: inset 0 0 0 1px rgba(255, 80, 60, 0.45), 0 0 16px rgba(255, 40, 30, 0.12);
+}
+
+.forecast[data-src="sgb"] > em::after {
+  content: " · SGB";
+  color: var(--led-dim);
+  letter-spacing: 0.12em;
+}
+
+.forecast > strong {
+  display: none;
 }
 
 .lcd {
@@ -456,7 +555,7 @@ body::before {
 .lcd b, .lcd time, .lcd span {
   position: relative;
   z-index: 1;
-  font-family: Orbitron, "Share Tech Mono", monospace;
+  font-family: var(--font-num);
   font-weight: 700;
   font-size: clamp(13px, 2.1vw, 22px);
   color: var(--led);
@@ -481,13 +580,13 @@ body::before {
 .lcd.pair span { display: flex; align-items: baseline; gap: 0.2em; }
 
 .clock-lcd {
-  width: min(380px, 90%);
+  width: min(360px, 96%);
   justify-self: center;
-  min-height: 58px;
-  max-height: 72px;
-  margin: 0;
-  z-index: 2;
+  min-height: 52px;
+  max-height: none;
+  margin: 6px 0 0;
   gap: 0;
+  flex: 0 0 auto;
 }
 
 .clock-lcd em {
@@ -568,13 +667,13 @@ body::before {
 }
 
 .day .d {
-  font-family: Orbitron, monospace;
+  font-family: var(--font-num);
   font-size: clamp(11px, 1.6vw, 16px);
   color: var(--amber);
 }
 
 .day .mm {
-  font-family: Orbitron, monospace;
+  font-family: var(--font-num);
   font-size: clamp(12px, 1.8vw, 18px);
   color: var(--led);
   text-shadow: var(--glow);
@@ -687,7 +786,7 @@ body::before {
   align-items: baseline;
   gap: 12px;
   color: var(--amber);
-  font-family: Orbitron, monospace;
+  font-family: var(--font-num);
   letter-spacing: 0.12em;
 }
 
@@ -705,7 +804,7 @@ body::before {
 .radio.on #radio-st { color: var(--led); text-shadow: var(--glow); }
 
 #radio-name {
-  font-family: Orbitron, monospace;
+  font-family: var(--font-num);
   font-size: clamp(11px, 1.5vw, 16px);
   color: var(--led);
   text-shadow: var(--glow);
@@ -761,7 +860,6 @@ body::before {
     grid-template-rows: auto;
     grid-template-areas:
       "gauge gauge"
-      "clock clock"
       "left right"
       "radio radio"
       "charts charts"
@@ -794,8 +892,9 @@ body::before {
   .link-status > em { font-size: 8px; letter-spacing: 0.1em; }
 
   .gauge {
-    width: min(68vw, 38vh, 300px);
-    max-width: 300px;
+    width: min(78vw, 48vh, 380px);
+    max-width: 380px;
+    min-height: min(240px, 36vh);
     max-height: none;
     height: auto;
   }
@@ -825,6 +924,14 @@ body::before {
     font-size: 8px;
     width: min(300px, 92%);
   }
+
+  .forecast {
+    width: min(300px, 92%);
+    margin-top: 10px;
+    padding: 10px 12px;
+  }
+
+  .forecast-val b { font-size: clamp(18px, 5vw, 24px); }
 
   .pct strong {
     font-size: 10px;
@@ -985,7 +1092,8 @@ body::before {
   }
 
   .gauge {
-    width: min(74vw, 34vh, 280px);
+    width: min(82vw, 42vh, 320px);
+    min-height: 200px;
   }
 
   .lcd {
@@ -1015,7 +1123,7 @@ body::before {
   border: 0;
   background: #1a1208;
   color: var(--amber);
-  font-family: "Share Tech Mono", monospace;
+  font-family: var(--font-ui);
   font-size: 9px;
   letter-spacing: 0.14em;
   padding: 4px 8px;
@@ -1109,7 +1217,7 @@ body::before {
 
 .vale-list li i {
   font-style: normal;
-  font-family: Orbitron, sans-serif;
+  font-family: var(--font-num);
   font-size: 10px !important;
   color: var(--amber) !important;
   text-shadow: none !important;
@@ -1143,7 +1251,7 @@ body::before {
   grid-column: 2 / span 2;
   grid-row: 2;
   font-style: normal !important;
-  font-family: "Share Tech Mono", monospace !important;
+  font-family: var(--font-ui) !important;
   font-size: 8px !important;
   letter-spacing: 0.06em !important;
   color: var(--led-dim) !important;
@@ -1182,7 +1290,7 @@ body::before {
 .vale-num {
   fill: #e8ffe0;
   font-size: 5.2px;
-  font-family: Orbitron, sans-serif;
+  font-family: var(--font-num);
   font-weight: 800;
   paint-order: stroke fill;
   stroke: #020402;
@@ -1207,14 +1315,14 @@ body::before {
   border-radius: 10px;
   padding: 10px 8px;
   min-height: 48px;
-  font-family: Orbitron, monospace;
+  font-family: var(--font-num);
   font-size: 16px;
   letter-spacing: 0.06em;
   box-shadow: inset 0 0 0 1px rgba(140, 255, 110, 0.18);
 }
 
 .help-bar a small {
-  font-family: "Share Tech Mono", monospace;
+  font-family: var(--font-ui);
   font-size: 9px;
   letter-spacing: 0.12em;
   color: var(--amber);
@@ -1270,3 +1378,4 @@ body::before {
     min-height: 120px;
   }
 }
+

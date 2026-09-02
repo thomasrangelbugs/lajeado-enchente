@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#050505" />
-  <meta name="description" content="Painel do Rio Taquari em Lajeado: cotas, clima e rádio do Vale." />
-  <title>Enchente Lajeado</title>
+  <meta name="description" content="Painel do Rio Taquari em Lajeado: cotas, níveis e clima." />
+  <title>Taquari Lajeado</title>
   <link rel="icon" href="img/favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="img/icon-192.png" />
   <link rel="manifest" href="manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="preconnect" href="https://api.open-meteo.com" />
   <link rel="preconnect" href="https://flood-api.open-meteo.com" />
   <link rel="stylesheet" href="css/style.css" />
@@ -37,7 +37,7 @@
     </section>
 
     <section class="core">
-      <p class="gauge-banner">RISCO · COTAS DO TAQUARI</p>
+      <p class="gauge-banner">COTAS DO TAQUARI</p>
       <div class="link-status" id="link-status" data-state="load">
         <i class="link-led" id="link-led"></i>
         <em id="link-label">BUSCANDO</em>
@@ -63,6 +63,19 @@
         <li data-band="high"><b>19 m</b><span>INUNDAÇÃO</span><i>100%</i></li>
       </ul>
       <p class="cota-note">Régua Estrela/Lajeado · SGB / Defesa Civil · 100% = cota de inundação</p>
+      <aside class="forecast" id="forecast" data-src="none">
+        <em>PREVISÃO · NÍVEL</em>
+        <div class="forecast-row">
+          <span class="forecast-val"><b id="v-proj">--</b><i>m</i></span>
+          <span class="forecast-eta" id="v-proj-eta">--</span>
+        </div>
+        <small id="v-proj-why">--</small>
+      </aside>
+      <div class="clock lcd clock-lcd">
+        <em>LAJEADO RS</em>
+        <time id="v-date">--.--.----</time>
+        <time id="v-time">--:--:--</time>
+      </div>
     </section>
 
     <section class="side side-r">
@@ -82,12 +95,6 @@
       <article class="lcd"><em>VAZÃO DO RIO</em><span class="val"><b id="v-q">--</b><i>m³/s</i></span></article>
       <article class="lcd"><em>UMIDADE SOLO</em><span class="val"><b id="v-soil">--</b><i>%</i></span></article>
     </section>
-
-    <div class="clock lcd clock-lcd">
-      <em>LAJEADO RS</em>
-      <time id="v-date">--.--.----</time>
-      <time id="v-time">--:--:--</time>
-    </div>
 
     <section class="radio" id="radio">
       <div class="knob-col" data-knob="tune">

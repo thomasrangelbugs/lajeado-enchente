@@ -20,6 +20,12 @@
     Service-Worker-Allowed = "/"
 
 [[redirects]]
+  from = "/p/sgb/*"
+  to = "https://www.sgb.gov.br/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/p/ana"
   to = "https://telemetriaws1.ana.gov.br/ServiceANA.asmx/DadosHidrometeorologicos"
   status = 200

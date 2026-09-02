@@ -1,7 +1,7 @@
 {
-  "name": "Enchente Lajeado",
-  "short_name": "Enchente",
-  "description": "Painel do Rio Taquari em Lajeado: cotas, clima e rádio do Vale.",
+  "name": "Taquari Lajeado",
+  "short_name": "Taquari",
+  "description": "Painel do Rio Taquari em Lajeado: cotas, níveis e clima.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

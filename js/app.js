@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   const LAT = -29.4669;
   const LON = -51.9614;
   const TZ = "America/Sao_Paulo";
@@ -8,7 +8,7 @@
     inundacao: 19
   };
 
-  /* Cotas SGB/SAH Taquari (m). Estrela e Lajeado compartilham a régua 86879300. */
+  /* Cotas SGB/SAH Taquari (m). Estrela e Lajeado compartilham a regua 86879300. */
   const UPSTREAM = [
     { slug: "santatereza", alt: ["santa-tereza"], flood: 15, alerta: 9, atencao: 6 },
     { slug: "mucum", alt: [], flood: 18, alerta: 9, atencao: 6 },
@@ -19,14 +19,22 @@
   ];
 
   const VALE = [
-    { slug: "santatereza", label: "S. TEREZA", x: 6, y: 28, flood: 15, alerta: 9, atencao: 6 },
-    { slug: "mucum", label: "MUÇUM", x: 20, y: 46, flood: 18, alerta: 9, atencao: 6 },
-    { slug: "encantado", label: "ENCANTADO", x: 34, y: 28, flood: 12, alerta: 9, atencao: 6 },
-    { slug: "rocasales", label: "ROCA SALES", x: 48, y: 48, flood: 18, alerta: 9, atencao: 6 },
-    { slug: "estrela", label: "ESTRELA", x: 58, y: 24, flood: 19, alerta: 17, atencao: 15, sameAs: "lajeado" },
-    { slug: "lajeado", label: "LAJEADO", x: 70, y: 42, flood: 19, alerta: 17, atencao: 15, home: true },
-    { slug: "bomretirodosul", label: "B. RETIRO", x: 84, y: 28, flood: 16.5, alerta: 14, atencao: 12 },
-    { slug: "taquari", label: "TAQUARI", x: 96, y: 50, flood: 8.5, alerta: 7, atencao: 5.5 }
+    { slug: "santatereza", label: "S. TEREZA", x: 6, y: 28, flood: 15, alerta: 9, atencao: 6, lagH: 10 },
+    { slug: "mucum", label: "MUÇUM", x: 20, y: 46, flood: 18, alerta: 9, atencao: 6, lagH: 6 },
+    { slug: "encantado", label: "ENCANTADO", x: 34, y: 28, flood: 12, alerta: 9, atencao: 6, lagH: 4 },
+    { slug: "rocasales", label: "ROCA SALES", x: 48, y: 48, flood: 18, alerta: 9, atencao: 6, lagH: 5 },
+    { slug: "estrela", label: "ESTRELA", x: 58, y: 24, flood: 19, alerta: 17, atencao: 15, sameAs: "lajeado", lagH: 0 },
+    { slug: "lajeado", label: "LAJEADO", x: 70, y: 42, flood: 19, alerta: 17, atencao: 15, home: true, lagH: 0 },
+    { slug: "bomretirodosul", label: "B. RETIRO", x: 84, y: 28, flood: 16.5, alerta: 12, atencao: 9, lagH: -2 },
+    { slug: "taquari", label: "TAQUARI", x: 96, y: 50, flood: 8.5, alerta: 6.5, atencao: 4, lagH: -4 }
+  ];
+
+  /* Lag tipico ate Lajeado (h), alinhado ao SAH/SGB. */
+  const WAVE_DRIVERS = [
+    { slug: "encantado", lagH: 4, weight: 1.25 },
+    { slug: "mucum", lagH: 6, weight: 1.1 },
+    { slug: "rocasales", lagH: 5, weight: 0.7 },
+    { slug: "santatereza", lagH: 10, weight: 0.55 }
   ];
 
   const GEO = "4311403";
@@ -98,6 +106,8 @@
     lastRiver: { m: null, at: 0, trend: 0 },
     riverPts: [],
     vale: {},
+    valeMeta: {},
+    forecast: null,
     alarmOn: true,
     alarmBand: null
   };
@@ -471,6 +481,8 @@
       inmetP: `/p/inmet/previsao/${GEO}`,
       avisosP: "/p/inmet/avisos/ativos",
       wttrP: "/p/wttr/Lajeado+RS?format=j1",
+      sgbP: "/p/sgb/sace/taquari/ultimo_boletim.php",
+      sgbAo: "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://www.sgb.gov.br/sace/taquari/ultimo_boletim.php"),
       allorigins: "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://nivelguaiba.com.br/lajeado.json")
     };
 
@@ -635,12 +647,22 @@
       };
 
       const vale = { lajeado: river ? river.m : state.lastRiver.m };
+      const valeMeta = {
+        lajeado: river
+          ? { m: river.m, trend: river.trend || 0, at: river.at }
+          : { m: state.lastRiver.m, trend: state.lastRiver.trend || 0, at: state.lastRiver.at }
+      };
       UPSTREAM.forEach((u) => {
         const r = valeRiver(u.slug);
-        if (r) vale[u.slug] = r.m;
+        if (r) {
+          vale[u.slug] = r.m;
+          valeMeta[u.slug] = { m: r.m, trend: r.trend || 0, at: r.at };
+        }
       });
       vale.estrela = vale.estrela ?? vale.lajeado;
+      valeMeta.estrela = valeMeta.estrela || valeMeta.lajeado;
       state.vale = vale;
+      state.valeMeta = valeMeta;
 
       let upstreamMax = 0;
       UPSTREAM.forEach((u) => {
@@ -651,7 +673,13 @@
       if (mucumAna) {
         const mucumFlood = UPSTREAM.find((u) => u.slug === "mucum")?.flood || 18;
         upstreamMax = Math.max(upstreamMax, (mucumAna.m / mucumFlood) * 100);
+        if (vale.mucum == null) {
+          vale.mucum = mucumAna.m;
+          valeMeta.mucum = { m: mucumAna.m, trend: 0, at: mucumAna.at };
+        }
       }
+
+      const sgbForecast = parseSgbBoletim(bag.sgbP) || parseSgbBoletim(bag.sgbAo);
 
       const flood = bag.flood && bag.flood.daily ? bag.flood.daily : {};
       const q = (k) => (Array.isArray(flood[k]) ? flood[k].map(Number) : []);
@@ -703,6 +731,8 @@
         qMin,
         upstreamMax,
         vale,
+        valeMeta,
+        sgbForecast,
         riverPts: state.riverPts,
         alertStorm,
         alertGrande
@@ -716,10 +746,12 @@
         data.rainDay = bestDaily.precipitation_sum ? Number(bestDaily.precipitation_sum[i0]) || data.rainDay : data.rainDay;
       }
 
-      data.projM = projectLevel(data);
+      data.forecast = buildForecast(data);
+      data.projM = data.forecast.m;
       data.chance = levelToGauge(data.projM);
       state.data = data;
-      state.target = data.chance;
+      state.forecast = data.forecast;
+      state.target = levelToGauge(data.riverM);
       try { paintDash(data); } catch (err) { console.error(err); }
       return data;
     };
@@ -745,6 +777,149 @@
     });
   }
 
+  function parseSgbBoletim(raw) {
+    if (raw == null) return null;
+    const strip = (s) => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const text = strip(
+      String(raw)
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    );
+    if (!text || text.length < 40) return null;
+
+    const cities = {};
+    const push = (slug, m, hours) => {
+      if (!slug || !Number.isFinite(m) || m <= 0) return;
+      const h = Number.isFinite(hours) ? hours : 6;
+      const prev = cities[slug];
+      if (!prev || h <= prev.hours) cities[slug] = { m, hours: h, source: "sgb" };
+    };
+
+    const nameMap = [
+      [/estrela\s+e\s+lajeado/i, ["lajeado", "estrela"]],
+      [/lajeado/i, ["lajeado", "estrela"]],
+      [/mucum/i, ["mucum"]],
+      [/encantado/i, ["encantado"]],
+      [/santa\s+tereza/i, ["santatereza"]],
+      [/bom\s+retiro/i, ["bomretirodosul"]],
+      [/\btaquari\b/i, ["taquari"]]
+    ];
+
+    const re = /(?:municipio(?:s)?\s+de\s+)([A-Za-z\s]+?)(?:,|\s+o\s+nivel)[^0-9]{0,80}?(\d{3,4})\s*cm[^0-9]{0,40}?(\d{1,2})\s*h/gi;
+    let match;
+    while ((match = re.exec(text))) {
+      const place = match[1].trim();
+      const cm = Number(match[2]);
+      const hours = Number(match[3]);
+      for (const [rx, slugs] of nameMap) {
+        if (rx.test(place)) {
+          slugs.forEach((s) => push(s, cm / 100, hours));
+          break;
+        }
+      }
+    }
+
+    if (!Object.keys(cities).length) return null;
+    return { cities, at: now() };
+  }
+
+  function buildForecast(d) {
+    const nowM = d.riverM;
+    const empty = {
+      m: null,
+      hours: null,
+      risk: "low",
+      source: "none",
+      why: "--",
+      cities: {}
+    };
+    if (nowM == null || !Number.isFinite(nowM)) return empty;
+
+    const sgb = d.sgbForecast;
+    const cityProj = { ...(sgb && sgb.cities ? sgb.cities : {}) };
+
+    if (sgb && sgb.cities && sgb.cities.lajeado) {
+      const s = sgb.cities.lajeado;
+      return {
+        m: s.m,
+        hours: s.hours,
+        risk: riskFromLevel(s.m),
+        source: "sgb",
+        why: `SGB · ${s.hours} h`,
+        cities: cityProj
+      };
+    }
+
+    const meta = d.valeMeta || {};
+    const vale = d.vale || {};
+    const fromTrend = nowM + clamp((d.trend || 0) * 0.01 * 6, -1.5, 6);
+    let best = {
+      m: fromTrend,
+      hours: 6,
+      label: null,
+      score: 0
+    };
+
+    WAVE_DRIVERS.forEach((drv) => {
+      const city = VALE.find((c) => c.slug === drv.slug);
+      const m = vale[drv.slug];
+      if (!city || m == null || !Number.isFinite(m)) return;
+      const trend = (meta[drv.slug] && meta[drv.slug].trend) || 0;
+      const futureUp = m + clamp(trend * 0.01 * drv.lagH, -2, 8);
+      const frac = clamp(futureUp / city.flood, 0, 1.8);
+      const mapped = COTA.inundacao * frac;
+      if (mapped > nowM + 0.15 && (frac >= 0.45 || trend > 8)) {
+        const score = (mapped - nowM) * drv.weight;
+        if (score > best.score) {
+          best = { m: mapped, hours: drv.lagH, label: city.label, score };
+        }
+      }
+      cityProj[drv.slug] = cityProj[drv.slug] || {
+        m: futureUp,
+        hours: drv.lagH,
+        source: "vale"
+      };
+    });
+
+    const lajeadoProj = best.score > 0 ? Math.max(fromTrend, best.m) : fromTrend;
+    [
+      { slug: "bomretirodosul", lagH: 2 },
+      { slug: "taquari", lagH: 4 }
+    ].forEach((dn) => {
+      const city = VALE.find((c) => c.slug === dn.slug);
+      if (!city) return;
+      const m = vale[dn.slug];
+      const frac = lajeadoProj / COTA.inundacao;
+      const mapped = city.flood * frac;
+      const cur = m != null ? m : mapped;
+      cityProj[dn.slug] = cityProj[dn.slug] || {
+        m: Math.max(cur, mapped),
+        hours: dn.lagH,
+        source: "vale"
+      };
+    });
+
+    cityProj.lajeado = { m: lajeadoProj, hours: best.hours, source: "vale" };
+    cityProj.estrela = cityProj.lajeado;
+
+    const why = best.label
+      ? `${best.label} · ${best.hours} h`
+      : `tendência · ${best.hours} h`;
+
+    return {
+      m: lajeadoProj,
+      hours: best.hours,
+      risk: riskFromLevel(lajeadoProj),
+      source: best.label ? "vale" : "trend",
+      why,
+      cities: cityProj
+    };
+  }
+
   function levelToGauge(m) {
     if (m == null || !Number.isFinite(m) || m <= 0) return 0;
     if (m < COTA.atencao) return 40 * (m / COTA.atencao);
@@ -754,23 +929,8 @@
   }
 
   function projectLevel(d) {
-    const m = d.riverM;
-    if (m == null || !Number.isFinite(m)) return null;
-    const trend = d.trend ?? 0;
-    const in48h = m + clamp(trend * 0.01 * 48, -2, 6);
-    let lift = 0;
-    const rainWeek = d.rainWeek || 0;
-    const rainPeak = d.rainPeak || Math.max(0, ...(d.rain7 || [0]));
-    if (rainWeek >= 80) lift += 0.5;
-    if (rainPeak >= 50) lift += 0.4;
-    const qMax = Math.max(0, ...(d.qMax || [0]));
-    if (qMax >= 5000) lift += 0.8;
-    if (qMax >= 8000) lift += 1.2;
-    if ((d.upstreamMax || 0) >= 90) lift += 0.7;
-    if (d.alertGrande) lift += 0.8;
-    else if (d.alertStorm) lift += 0.3;
-    const rising = trend > 0.15;
-    return Math.max(m, in48h) + (rising ? lift : lift * 0.25);
+    const f = buildForecast(d);
+    return f.m != null ? f.m : d.riverM;
   }
 
   function riskFromLevel(m) {
@@ -782,10 +942,10 @@
   }
 
   function riskText(risk) {
-    if (risk === "high") return "ENCHENTE";
-    if (risk === "mid") return "ALERTA";
-    if (risk === "watch") return "ATENÇÃO";
-    return "NORMAL";
+    if (risk === "high") return "19 m";
+    if (risk === "mid") return "17 m";
+    if (risk === "watch") return "15 m";
+    return "--";
   }
 
   function fmtStamp(ms) {
@@ -855,7 +1015,7 @@
       tctx.fillStyle = "#050b08";
       tctx.fillRect(0, y - 8, padL, 16);
       tctx.fillStyle = lab;
-      tctx.font = "11px 'Share Tech Mono', monospace";
+      tctx.font = "11px 'IBM Plex Mono', monospace";
       tctx.textBaseline = "middle";
       tctx.fillText(String(m), 8, y);
     });
@@ -876,14 +1036,16 @@
     tctx.stroke();
   }
 
-  function paintVale(levels) {
+  function paintVale(levels, forecast) {
     const g = $("vale-dots");
     const list = $("vale-list");
     const src = levels || {};
+    const projCities = (forecast && forecast.cities) || {};
     const rows = VALE.map((c) => {
       const m = src[c.slug] ?? (c.sameAs ? src[c.sameAs] : null);
       const risk = cityRisk(m, c);
-      return { ...c, m, risk };
+      const proj = projCities[c.slug] || (c.sameAs ? projCities[c.sameAs] : null);
+      return { ...c, m, risk, proj };
     });
     if (g) {
       g.innerHTML = rows.map((c, i) => {
@@ -899,7 +1061,14 @@
         const home = c.home ? " home" : "";
         const meters = c.m != null ? `${fmt(c.m, 1)} m` : "--";
         const cota = c.flood != null ? `cota ${fmt(c.flood, c.flood % 1 ? 1 : 0)}` : "";
-        return `<li class="${home.trim()}" data-risk="${c.risk}"><i>${i + 1}</i><span>${c.label}</span><b>${meters}</b><em>${cota}</em></li>`;
+        let prev = "";
+        if (c.proj && c.proj.m != null && Number.isFinite(c.proj.m)) {
+          const showPrev = c.m == null || Math.abs(c.proj.m - c.m) >= 0.15;
+          if (showPrev) {
+            prev = ` · prev ${fmt(c.proj.m, 1)} m/${c.proj.hours || "?"}h`;
+          }
+        }
+        return `<li class="${home.trim()}" data-risk="${c.risk}"><i>${i + 1}</i><span>${c.label}</span><b>${meters}</b><em>${cota}${prev}</em></li>`;
       }).join("");
     }
   }
@@ -1010,9 +1179,24 @@
     });
 
     drawTrace(d.riverPts || state.riverPts);
-    paintVale(d.vale || state.vale);
+    paintVale(d.vale || state.vale, d.forecast || state.forecast);
+    paintForecast(d.forecast || state.forecast);
     syncCotaLegend(d.riverM);
     checkAlarm(d.riverM);
+  }
+
+  function paintForecast(f) {
+    const box = $("forecast");
+    if (!box) return;
+    const fc = f || {};
+    box.dataset.src = fc.source || "none";
+    box.dataset.risk = fc.risk || "low";
+    const proj = $("v-proj");
+    const eta = $("v-proj-eta");
+    const why = $("v-proj-why");
+    if (proj) proj.textContent = fc.m != null ? fmt(fc.m, 2) : "--";
+    if (eta) eta.textContent = fc.hours != null ? `em ~${fc.hours} h` : "--";
+    if (why) why.textContent = fc.why || "--";
   }
 
   function syncCotaLegend(m) {
@@ -1082,7 +1266,7 @@
       state.needle = shown;
       drawNeedle(shown);
       $("v-pct").textContent = fmt(shown, 1);
-      document.title = `Enchente ${fmt(shown, 0)}%`;
+      document.title = `Taquari ${fmt(shown, 0)}%`;
 
       const g = $("gauge");
       const risk = riskFromLevel(current);
@@ -1189,7 +1373,7 @@
       { name: "INDEPENDENTE", mhz: 91.7, city: "LAJEADO · VALE DO TAQUARI", url: "https://8563.brasilstream.com.br/stream" },
       { name: "94 FM", mhz: 94.0, city: "LAJEADO · VALE DO TAQUARI", url: "https://8567.brasilstream.com.br/stream" },
       { name: "UNIVATES", mhz: 95.1, city: "LAJEADO · VALE DO TAQUARI", url: "https://radio-nginx.univates.br/stream.m3u8" },
-      { name: "GUAÍBA", mhz: 101.3, city: "PORTO ALEGRE", url: "https://radio.saopaulo01.com.br:10827/stream" },
+      { name: "GUAIBA", mhz: 101.3, city: "PORTO ALEGRE", url: "https://radio.saopaulo01.com.br:10827/stream" },
       { name: "A HORA", mhz: 102.9, city: "LAJEADO · VALE DO TAQUARI", url: "https://cast2.youngtech.radio.br/radio/8340/radio" },
       { name: "GAZETA", mhz: 107.9, city: "SANTA CRUZ", url: "https://hts03.brascast.com:7106/stream" }
     ];
@@ -1394,3 +1578,4 @@
 
   boot().catch((err) => console.error(err));
 })();
+
