@@ -1,219 +1,210 @@
-# Chance de Enchente — Lajeado (RS)
+# Rio Taquari · Lajeado
 
-Painel estático no visual de **painel de carro**. O velocímetro mostra a **chance de enchente em Lajeado nos próximos 7 dias**, com dados de clima, nível do rio Taquari, vazão (GloFAS) e estações a montante.
+Painel web **PWA** para acompanhar o **nível do Rio Taquari em Lajeado (RS)**, clima local, chuva, vazão prevista, cidades do vale e rádio FM. Interface em **cards**, pensada para celular e desktop, com leitura acessível e barra de telefones de emergência.
 
-Feito para publicar no **Netlify** (arrastar a pasta ou `publish = "."`). Sem build, sem backend próprio, sem banco.
+Publicação recomendada no **Netlify** (arrastar a pasta ou conectar o repositório). Não há build: HTML, CSS e JavaScript puro.
 
-> **Isto não é alerta oficial.** É uma estimativa a partir de APIs abertas. Em emergência, use Defesa Civil / **199**.
+> **Isto não é alerta oficial.** Os números vêm de APIs e telemetrias públicas. Em emergência, use a Defesa Civil — **199**.
 
 ---
 
-## O que o painel mostra
+## O que o site mostra
 
-| Região | Indicadores |
+| Bloco | Conteúdo |
 | --- | --- |
-| Esquerda | Temperatura, máxima/mínima, umidade do ar, pressão, vento, rajada, UV, nuvens |
-| Centro | Velocímetro **CHANCE DE ENCHENTE · 7 DIAS** (`%` + status) |
-| Direita | Tempo agora, nível do rio, tendência (cm/h), chuva hoje/semana/mês, vazão, umidade do solo |
-| Meio | Relógio de Lajeado (data `dd.mm.yyyy` + hora com segundos) |
-| Rádio | FM do Vale do Taquari (estação + volume) |
-| Base | Previsão de chuva dos próximos 7 dias |
+| Cabeçalho | Título, relógio de Lajeado, aviso legal, indicador de sincronização dos dados |
+| Nível do rio | Valor em metros, faixa de risco, hora da medição, tendência (cm/h), régua 0–19 m e legenda das cotas |
+| Previsão do nível | Nível projetado, horizonte em horas e texto explicando a origem (SGB, tendência ou montante) |
+| Clima | Temperatura, máx/mín, umidade, pressão, vento, nuvens e UV |
+| Chuva e vazão | Chuva hoje/semana/mês, vazão GloFAS (m³/s) e umidade do solo |
+| Rádio FM | Seletor de emissoras, volume, play/pause (streams HTTPS; HLS quando necessário) |
+| Gráfico | Nível nas **últimas 48 horas** (canvas) |
+| Vale do Taquari | Mapa esquemático + lista com nível e risco por cidade |
+| Semana | Previsão de chuva dos **próximos 7 dias** |
+| Extra POA | Seção recolhível: **Lago Guaíba / Porto Alegre** (referência separada do Taquari) |
+| Rodapé | Atalhos **199**, 193, 192, 190 |
 
-Status do ponteiro:
+### Faixas oficiais — Estrela / Lajeado (SGB / Defesa Civil)
 
-| Faixa | Status | Cor |
-| --- | --- | --- |
-| &lt; 40% | NORMAL | verde |
-| 40–70% | ALERTA | âmbar |
-| ≥ 70% | ENCHENTE | vermelho |
+| Nível | Significado |
+| --- | --- |
+| Abaixo de **15 m** | Situação normal |
+| **15 m** | Atenção |
+| **17 m** | Alerta |
+| **19 m** | Inundação |
+
+A barra de progresso usa **19 m** como teto da escala. O texto mostra também o equivalente em **% da cota de inundação**.
+
+### Alarme sonoro
+
+Botão **Alarme ligado / desligado** no card do rio. Quando o nível **sobe de faixa** (normal → atenção → alerta → inundação), o app emite um bip curto. A preferência fica salva no `localStorage`.
 
 ---
 
-## Como publicar no Netlify
+## PWA (instalar no celular)
 
-1. Entre em [app.netlify.com/drop](https://app.netlify.com/drop) (ou **Add new site → Deploy manually**).
-2. Arraste a pasta **inteira** do projeto (incluindo `img/`, `css/`, `js/`, `netlify.toml`).
-3. Não precisa de *build command*. O `netlify.toml` já define `publish = "."`.
-4. Depois do ar, teste no celular e no desktop: dados, ponteiro, rádio (precisa de um clique) e previsão de 7 dias.
+- `manifest.json` — nome **Rio Taquari · Lajeado**, ícones 192/512 em `img/`
+- `sw.js` — cache da “casca” (HTML, CSS, JS); dados ao vivo sempre pela rede
+- Favicon inline em SVG no `index.html` (não depende de PNG pesado)
 
-Não abra o site via `file://`. Os proxies `/p/...` só existem no Netlify. No PC, use um servidor local (veja abaixo).
+No Chrome/Edge: menu → **Instalar app** ou **Adicionar à tela inicial**.
 
 ---
 
-## Como rodar no computador
+## Publicar no Netlify
+
+1. [app.netlify.com/drop](https://app.netlify.com/drop) ou **Add new site → Deploy manually**.
+2. Envie a pasta **inteira** (`index.html`, `css/`, `js/`, `img/`, `netlify.toml`, `_headers`, `manifest.json`, `sw.js`).
+3. **Build command:** vazio. **Publish directory:** `.` (já definido no `netlify.toml`).
+
+Não abra o site por `file://`. Os atalhos `/p/...` só existem com servidor (Netlify ou dev local).
+
+---
+
+## Rodar no computador
+
+### Opção A — igual ao Netlify (recomendado)
+
+Com [Netlify CLI](https://docs.netlify.com/cli/get-started/):
+
+```powershell
+npx netlify dev
+```
+
+Abra a URL que o CLI mostrar (em geral `http://localhost:8888`). Todos os proxies `/p/...` funcionam.
+
+### Opção B — servidor leve com proxy do rio
 
 Na pasta do projeto:
+
+```powershell
+node tools/dev-server.mjs
+```
+
+Abre `http://127.0.0.1:8765` com proxy de **`/p/ng/*`** (nivelguaiba) e **`/p/ana`** (telemetria ANA).
+
+### Opção C — só arquivos estáticos
 
 ```powershell
 npx --yes serve -p 8765
 ```
 
-Abra `http://127.0.0.1:8765`.
-
-O clima (Open-Meteo) costuma funcionar no localhost. O **nível do rio** pode ficar `--` por CORS; no Netlify o proxy `/p/ng/` preenche. Há fallback via `allorigins.win`.
+Clima e parte dos dados costumam carregar. O **nível do rio** pode ficar `--` por CORS; o site exibe uma dica para usar `netlify dev` ou publicar no Netlify. Há fallback via `allorigins.win` quando possível.
 
 ---
 
-## Estrutura
+## Estrutura do repositório
 
 ```
-Lajeado Enchente/
-├── index.html          # painel, relógio, rádio, previsão
-├── css/style.css       # layout tipo cluster de carro, responsivo
-├── js/app.js           # APIs, chance, ponteiro, relógio, rádio
+lajeado-enchente/
+├── index.html           # layout, cards, acessibilidade (skip link, ARIA)
+├── css/style.css        # tema claro, responsivo
+├── js/app.js            # APIs, previsão, gráfico, rádio, alarme
+├── manifest.json
+├── sw.js
+├── netlify.toml         # publish + proxies CORS + cache
+├── _headers
 ├── img/
-│   ├── dash-bg.png
-│   ├── gauge-face.png
-│   ├── needle.png
-│   ├── lcd-panel.png
-│   ├── weather-icons.png
-│   ├── knob.png
-│   ├── radio-face.png
-│   └── favicon.png
-├── netlify.toml        # publish + proxies CORS + cache
-├── _headers            # headers extras (Netlify)
+│   ├── icon-192.png
+│   └── icon-512.png     # (+ variantes .webp legadas do painel antigo)
+├── tools/
+│   ├── dev-server.mjs   # proxy local ng/ana
+│   └── compress_img.py  # utilitário opcional de imagens
 └── README.md
 ```
 
-Não há `package.json`. É HTML + CSS + JS puro.
+Sem `package.json` — dependência externa apenas no navegador: **hls.js** (CDN) para stream `.m3u8` da Univates.
 
 ---
 
-## Constantes usadas
+## Constantes principais (`js/app.js`)
 
-Definidas no topo de `js/app.js`:
-
-| Constante | Valor | Significado |
+| Item | Valor | Uso |
 | --- | --- | --- |
 | Coordenadas | `-29.4669, -51.9614` | Lajeado, RS |
-| Fuso | `America/Sao_Paulo` | relógio e previsões |
-| Cota de inundação | **19 m** | referência local |
-| Pico 2024 | **33,66 m** | escala do “já inundou” |
-| Código IBGE | `4311403` | INMET / geocode |
-| Estação ANA Lajeado | `86879300` | telemetria do rio |
-| Estação ANA Muçum | `86510000` | montante |
+| Fuso | `America/Sao_Paulo` | Relógio e previsões |
+| Cotas Taquari | 15 / 17 / 19 m | Atenção, alerta, inundação |
+| IBGE | `4311403` | INMET |
+| ANA Lajeado | `86879300` | Telemetria (compartilhada Estrela/Lajeado) |
+| ANA Muçum | `86510000` | Montante |
 
-Cidades a montante (nível relativo à cota de cada uma): Santa Tereza, Muçum, Encantado, Roca Sales, Bom Retiro do Sul, Taquari.
+Cidades no vale (mapa e montante): Santa Tereza, Muçum, Encantado, Roca Sales, Estrela, Lajeado, Bom Retiro do Sul, Taquari — cada uma com cotas locais SGB/SAH quando aplicável.
 
----
-
-## Como o velocímetro calcula a chance
-
-Função `chance()` em `js/app.js`. Resultado entre **0,2%** e **99,6%**.
-
-1. **Nível do rio vs 19 m** — quanto mais perto (ou acima) da cota, maior o peso. Acima de 19 m sobe em direção ao pico de 33,66 m.
-2. **Projeção** — usa a tendência em cm/h para estimar o nível nas próximas horas.
-3. **Chuva 7 dias** — acumulado da semana + pico diário forte (≥ 50 mm).
-4. **Vazão GloFAS** (Open-Meteo Flood) — média, mínimo e máximo previstos (m³/s).
-5. **Montante** — se estações rio acima já estão altas, a chance sobe.
-6. **Tendência** — rio subindo aumenta; descendo reduz um pouco.
-7. **Avisos INMET** — tempestade / chuva no RS (+6); grande perigo / vermelho (+12).
-8. **Umidade do solo** — solo já saturado (> 40%) soma um pouco.
-
-Não substitui modelo hidrológico oficial. É um índice composto para leitura rápida no painel.
+**Guaíba (POA)** — cotas orientativas ~2,0 / 2,35 / 2,55 m (atenção / alerta / cheia), escala até 2,8 m; fonte `nivelguaiba.com.br` Porto Alegre.
 
 ---
 
-## Fontes de dados (APIs abertas)
+## Como a previsão do nível é calculada
 
-O site busca **várias fontes em paralelo**. O núcleo carrega primeiro (clima, GloFAS, nível Lajeado, ANA). O resto segue em segundo plano.
+Função `buildForecast()` — ordem de prioridade:
 
-### Clima e vazão — Open-Meteo
+1. **Boletim SGB** (`/p/sgb/sace/taquari/ultimo_boletim.php`) — se houver previsão parseada para Lajeado/Estrela, ela vence (fonte `sgb`).
+2. **Onda a montante** — Encantado, Muçum, Roca Sales e Santa Tereza com atrasos típicos (horas) alinhados ao SAH; mapeia nível relativo à cota de cada cidade para a escala de Lajeado.
+3. **Tendência local** — extrapolação a partir da taxa cm/h nas próximas ~6 h quando não há boletim nem montante relevante.
 
-- Previsão (`api.open-meteo.com`) — temperatura, chuva, vento, UV, nuvens, solo
-- Vários modelos: ECMWF, GFS, ICON, GEM, Météo-France, UKMO, BOM, CMA, JMA, KMA
-- Ensemble (ECMWF, GFS, ICON, GEM)
-- Arquivo (chuva do mês)
-- Bacia (pontos a montante no Taquari)
-- **Flood / GloFAS** — vazão do rio (m³/s) nos próximos 7 dias
-- Qualidade do ar, geocoding e elevação (apoio)
+O card **Previsão do nível** mostra metros, horizonte (`~N horas`) e o texto em **Por quê** (`why`).
 
-### Nível do rio
-
-- [nivelguaiba.com.br](https://nivelguaiba.com.br) — `lajeado.json` e estações a montante
-- **ANA** SOAP — `DadosHidrometeorologicos` das estações `86879300` (Lajeado) e `86510000` (Muçum)
-
-### Tempo e avisos
-
-- INMET — previsão por município (`4311403`) e avisos ativos
-- wttr.in — reforço de chuva e condições atuais
-
-### Relógio
-
-Sincroniza o offset com várias APIs e usa a mediana (relógio local + correção):
-
-- WorldTimeAPI
-- TimeAPI
-- WorldClockAPI
-- Cloudflare `cdn-cgi/trace`
-
-Atualiza na tela a cada segundo (`America/Sao_Paulo`).
+Internamente, `levelToGauge()` ainda converte nível em 0–100 % da escala (útil para lógica e alarme); a interface principal trabalha em **metros** e **faixas oficiais**, não em velocímetro.
 
 ---
 
-## Proxies do Netlify (`/p/...`)
+## Fontes de dados
 
-No ar, o `netlify.toml` encaminha pedidos que o navegador não faria direto (CORS):
+Carregamento em **duas ondas**: núcleo (clima simples, GloFAS, nível Lajeado, ANA) e depois o restante em paralelo, com barra de progresso no cabeçalho.
 
-| Caminho no site | Destino |
+| Tema | Fontes |
 | --- | --- |
+| Clima | Open-Meteo (vários modelos + ensemble + arquivo do mês + bacia Taquari) |
+| Vazão | Open-Meteo Flood / GloFAS |
+| Nível Taquari e vale | [nivelguaiba.com.br](https://nivelguaiba.com.br) (`*.json`) |
+| Telemetria | ANA SOAP `DadosHidrometeorologicos` |
+| Previsão hidro | SGB — último boletim Taquari |
+| Tempo / avisos | INMET (previsão + avisos ativos), wttr.in |
+| Relógio | WorldTimeAPI, TimeAPI, WorldClockAPI, Cloudflare trace (mediana) |
+| Rádio extra | Radio Browser (raio ~90 km de Lajeado), mesclado às emissoras fixas |
+| POA | `portoalegre.json` no nivelguaiba |
+
+Emissoras fixas (exemplos): Independente 91,7 · 94 FM · Univates 95,1 (HLS) · Guaíba 101,3 · A Hora 102,9 · Gazeta 107,9.
+
+---
+
+## Proxies Netlify (`/p/...`)
+
+| Caminho | Destino |
+| --- | --- |
+| `/p/sgb/*` | www.sgb.gov.br |
 | `/p/ana` | Telemetria ANA |
 | `/p/ng/*` | nivelguaiba.com.br |
 | `/p/inmet/*` | API INMET |
 | `/p/wttr/*` | wttr.in |
-| `/p/wtime/*` | WorldTimeAPI |
-| `/p/timeapi/*` e `/p/timeapi2/*` | TimeAPI |
-| `/p/wclock/*` | WorldClockAPI |
+| `/p/wtime/*`, `/p/timeapi/*`, `/p/timeapi2/*`, `/p/wclock/*` | Serviços de hora |
 | `/p/radio/*` | Radio Browser |
 
-Headers: cache curto (120 s) no HTML/JS; imagens em `/img/` com cache de 1 ano.
+Cache curto no HTML/JS; `sw.js` com `max-age=0`; imagens em `/img/` com cache longo.
 
 ---
 
-## Rádio
+## Acessibilidade e UX
 
-Estações fixas (knob **ESTAÇÃO**):
-
-| Nome | Frequência | Stream |
-| --- | --- | --- |
-| Independente | 91.7 | brasilstream |
-| 94 FM | 94.0 | brasilstream |
-| A Hora | 102.9 | youngtech |
-| Gazeta | 107.9 | Santa Cruz |
-| Guaíba | 101.3 | Porto Alegre |
-
-- Clique no knob **ESTAÇÃO**: próxima emissora + play
-- Girar / scroll no **VOLUME**
-- LCD ou bolinha vermelha: liga / desliga
-- Extra: Radio Browser (estações perto de Lajeado); se falhar, ficam as 5 fixas
-- O navegador **bloqueia autoplay**: o áudio só começa depois de um clique
+- Link **Ir ao conteúdo**, rótulos ARIA, badges de risco com cores e texto
+- Relógio e status de sync com `aria-live`
+- Tipografia: [Source Sans 3](https://fonts.google.com/specimen/Source+Sans+3)
+- Layout responsivo: grids de duas colunas viram uma coluna em telas estreitas
 
 ---
 
-## Layout e imagens
+## Limitações
 
-Visual de cluster automotivo: fundo escuro, LCDs, velocímetro circular, knobs.
-
-- Desktop: colunas esquerda | gauge | direita, depois relógio, rádio e semana
-- Mobile (≤ 620 px): empilha; rádio com LCD em cima e knobs embaixo
-
-Fontes: [Orbitron](https://fonts.google.com/specimen/Orbitron) e [Share Tech Mono](https://fonts.google.com/specimen/Share+Tech+Mono) (Google Fonts).
-
----
-
-## Limitações conhecidas
-
-- **Não é aviso oficial** da Defesa Civil, ANA ou INMET.
-- Nível do rio `--` no localhost é esperado (CORS). No Netlify deve aparecer.
-- Streams de rádio dependem dos servidores das emissoras.
-- O `%` do gauge pode encostar na borda em alguns tamanhos de tela.
-- Favicon é PNG grande; não impede o funcionamento.
-- Tradutor automático do Chrome pode colocar um ícone no meio da tela — é do navegador, não do site.
+- Não substitui Defesa Civil, ANA, INMET ou SGB.
+- Nível `--` no localhost com `serve` simples é esperado; use `netlify dev` ou `node tools/dev-server.mjs`.
+- Streams de rádio dependem das emissoras; autoplay exige interação do usuário.
+- Previsão composta é **estimativa** para leitura rápida, não modelo hidrológico oficial.
+- Guaíba (POA) pode demorar dias para refletir eventos no Vale do Taquari.
 
 ---
 
 ## Licença e créditos
 
-Uso local / divulgação do painel. Os dados pertencem às APIs e órgãos citados (Open-Meteo, ANA, INMET, nivelguaiba, Radio Browser, emissoras). Respeite os termos de cada fonte.
+Projeto informativo para Lajeado e o Vale do Taquari. Dados pertencem aos órgãos e APIs citados. Respeite os termos de cada fonte.
 
-Marca d’água implícita do projeto: painel informativo para Lajeado e o Vale do Taquari.
+**Thomas Rangel Bugs** — [github.com/thomasrangelbugs/lajeado-enchente](https://github.com/thomasrangelbugs/lajeado-enchente)

@@ -8,6 +8,14 @@
     inundacao: 19
   };
 
+  /* Guaíba · POA — cotas orientativas (Cais / ilhas; Defesa Civil POA / SGB). */
+  const COTA_POA = {
+    atencao: 2,
+    alerta: 2.35,
+    inundacao: 2.55,
+    barMax: 2.8
+  };
+
   /* Cotas SGB/SAH Taquari (m). Estrela e Lajeado compartilham a regua 86879300. */
   const UPSTREAM = [
     { slug: "santatereza", alt: ["santa-tereza"], flood: 15, alerta: 9, atencao: 6 },
@@ -19,14 +27,14 @@
   ];
 
   const VALE = [
-    { slug: "santatereza", label: "S. TEREZA", x: 6, y: 28, flood: 15, alerta: 9, atencao: 6, lagH: 10 },
-    { slug: "mucum", label: "MUÇUM", x: 20, y: 46, flood: 18, alerta: 9, atencao: 6, lagH: 6 },
-    { slug: "encantado", label: "ENCANTADO", x: 34, y: 28, flood: 12, alerta: 9, atencao: 6, lagH: 4 },
-    { slug: "rocasales", label: "ROCA SALES", x: 48, y: 48, flood: 18, alerta: 9, atencao: 6, lagH: 5 },
-    { slug: "estrela", label: "ESTRELA", x: 58, y: 24, flood: 19, alerta: 17, atencao: 15, sameAs: "lajeado", lagH: 0 },
-    { slug: "lajeado", label: "LAJEADO", x: 70, y: 42, flood: 19, alerta: 17, atencao: 15, home: true, lagH: 0 },
-    { slug: "bomretirodosul", label: "B. RETIRO", x: 84, y: 28, flood: 16.5, alerta: 12, atencao: 9, lagH: -2 },
-    { slug: "taquari", label: "TAQUARI", x: 96, y: 50, flood: 8.5, alerta: 6.5, atencao: 4, lagH: -4 }
+    { slug: "santatereza", label: "Santa Tereza", x: 6, y: 28, flood: 15, alerta: 9, atencao: 6, lagH: 10 },
+    { slug: "mucum", label: "Muçum", x: 20, y: 46, flood: 18, alerta: 9, atencao: 6, lagH: 6 },
+    { slug: "encantado", label: "Encantado", x: 34, y: 28, flood: 12, alerta: 9, atencao: 6, lagH: 4 },
+    { slug: "rocasales", label: "Roca Sales", x: 48, y: 48, flood: 18, alerta: 9, atencao: 6, lagH: 5 },
+    { slug: "estrela", label: "Estrela", x: 58, y: 24, flood: 19, alerta: 17, atencao: 15, sameAs: "lajeado", lagH: 0 },
+    { slug: "lajeado", label: "Lajeado", x: 70, y: 42, flood: 19, alerta: 17, atencao: 15, home: true, lagH: 0 },
+    { slug: "bomretirodosul", label: "Bom Retiro", x: 84, y: 28, flood: 16.5, alerta: 12, atencao: 9, lagH: -2 },
+    { slug: "taquari", label: "Taquari", x: 96, y: 50, flood: 8.5, alerta: 6.5, atencao: 4, lagH: -4 }
   ];
 
   /* Lag tipico ate Lajeado (h), alinhado ao SAH/SGB. */
@@ -138,7 +146,7 @@
       const w = $("link-status");
       if (fillEl) fillEl.style.width = pct + "%";
       if (lab && w && w.dataset.state === "load") {
-        lab.textContent = "BUSCANDO  " + Math.round(pct) + "%";
+        lab.textContent = "Carregando… " + Math.round(pct) + "%";
       }
     },
     online() {
@@ -148,14 +156,14 @@
       const w = $("link-status");
       if (fillEl) fillEl.style.width = "100%";
       if (w) w.dataset.state = "on";
-      if (lab) lab.textContent = "ONLINE";
+      if (lab) lab.textContent = "Dados atualizados";
       setTimeout(() => w && w.classList.add("idle"), 800);
     },
     offline() {
       const w = $("link-status");
       const lab = $("link-label");
       if (w) w.dataset.state = "off";
-      if (lab) lab.textContent = "OFFLINE";
+      if (lab) lab.textContent = "Sem conexão com os dados";
     }
   };
 
@@ -348,8 +356,15 @@
         hour12: false
       }).formatToParts(d);
       const g = (t) => p.find((x) => x.type === t)?.value || "--";
-      $("v-date").textContent = `${g("day")}.${g("month")}.${g("year")}`;
-      $("v-time").textContent = `${g("hour")}:${g("minute")}:${g("second")}`;
+      const dateEl = $("v-date");
+      const timeEl = $("v-time");
+      const dateStr = `${g("day")}/${g("month")}/${g("year")}`;
+      const timeStr = `${g("hour")}:${g("minute")}`;
+      if (dateEl) dateEl.textContent = dateStr;
+      if (timeEl) {
+        timeEl.textContent = timeStr;
+        timeEl.setAttribute("datetime", `${g("year")}-${g("month")}-${g("day")}T${g("hour")}:${g("minute")}:00`);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -365,10 +380,160 @@
     return isDay ? "sun" : "moon";
   }
 
+  function parseMaybeJson(raw) {
+    if (raw == null) return null;
+    if (typeof raw === "object") return raw;
+    const text = String(raw).trim().replace(/^\uFEFF/, "");
+    if (!text.startsWith("{") && !text.startsWith("[")) return null;
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      return null;
+    }
+  }
+
   function parseRiverJson(j) {
-    const last = lastEntry(j);
+    const data = parseMaybeJson(j) ?? j;
+    const last = lastEntry(data);
     if (!last || !Number.isFinite(last.v)) return null;
-    return { m: last.v, at: Date.parse(last.t.replace(" ", "T")), trend: trendFromSeries(j) };
+    return {
+      m: last.v,
+      at: Date.parse(last.t.replace(" ", "T")),
+      trend: trendFromSeries(data)
+    };
+  }
+
+  function pickRiverFromBag(bag, ms) {
+    const jsonSources = [bag.lajeadoP, bag.allorigins, bag.lajeadoNg];
+    for (const src of jsonSources) {
+      const j = parseMaybeJson(src);
+      const river = parseRiverJson(j ?? src);
+      if (river) return river;
+    }
+    const ana = parseAnaXml(bag.anaP, ms);
+    if (ana) {
+      return { m: ana.m, at: ana.at, trend: 0 };
+    }
+    return null;
+  }
+
+  async function loadRiverQuick() {
+    const ms = now();
+    const br = todayBR(ms);
+    const tries = [
+      "/p/ng/lajeado.json",
+      `/p/ana?codEstacao=${ANA_LAJEADO}&dataInicio=${encodeURIComponent(br)}&dataFim=${encodeURIComponent(br)}`
+    ];
+    for (const url of tries) {
+      try {
+        const raw = await grab(url, 14000);
+        let river = null;
+        if (url.includes("/p/ana")) {
+          river = parseAnaXml(raw, ms);
+          if (river) river = { m: river.m, at: river.at, trend: 0 };
+        } else {
+          river = parseRiverJson(raw);
+        }
+        if (!river) continue;
+        state.lastRiver = river;
+        const j = parseMaybeJson(raw);
+        const pts = url.includes("/p/ana") ? seriesFromAna(raw) : seriesFromJson(j ?? raw);
+        if (pts.length) state.riverPts = pts;
+        $("v-river").textContent = fmt(river.m, 2);
+        const stamp = $("v-river-at");
+        if (stamp) stamp.textContent = fmtStamp(river.at);
+        const tr = trendText(river.trend);
+        const trendEl = $("v-trend");
+        if (trendEl) {
+          trendEl.textContent = tr.text;
+          trendEl.dataset.dir = tr.dir;
+        }
+        updateRiverDisplay(river.m);
+        setRiverHint(false);
+        drawTrace(state.riverPts);
+        return river;
+      } catch (_) {}
+    }
+    setRiverHint(true);
+    updateRiverDisplay(null);
+    return null;
+  }
+
+  function setRiverHint(show) {
+    const el = $("river-hint");
+    if (el) el.hidden = !show;
+  }
+
+  function poaRiskFromLevel(m) {
+    if (m == null || !Number.isFinite(m)) return "none";
+    if (m >= COTA_POA.inundacao) return "high";
+    if (m >= COTA_POA.alerta) return "mid";
+    if (m >= COTA_POA.atencao) return "watch";
+    return "low";
+  }
+
+  function poaStatusLabel(risk) {
+    if (risk === "high") return "Cheia relevante no Guaíba";
+    if (risk === "mid") return "Alerta — ilhas e ribeiras";
+    if (risk === "watch") return "Atenção — começo de alagamentos";
+    return "Sem alerta usual";
+  }
+
+  function syncPoaLegend(m) {
+    const risk = poaRiskFromLevel(m);
+    document.querySelectorAll(".cota-legend--poa li").forEach((li) => {
+      li.classList.toggle("on", risk !== "none" && li.dataset.band === risk);
+    });
+  }
+
+  function updatePoaDisplay(m, trend) {
+    const risk = poaRiskFromLevel(m);
+    const status = $("v-poa-status");
+    if (status) {
+      status.textContent =
+        m != null && Number.isFinite(m) ? poaStatusLabel(risk) : "Medição indisponível";
+      status.dataset.risk = risk;
+    }
+    const fill = $("poa-fill");
+    const scale = $("poa-scale");
+    if (fill) {
+      const pct =
+        m != null && Number.isFinite(m)
+          ? clamp((m / COTA_POA.barMax) * 100, 0, 100)
+          : 0;
+      fill.style.width = pct + "%";
+    }
+    if (scale) scale.dataset.risk = risk;
+    syncPoaLegend(m);
+  }
+
+  function paintPoaBonus(river) {
+    if (!river || !Number.isFinite(river.m)) {
+      updatePoaDisplay(null);
+      return;
+    }
+    const levelEl = $("v-poa-river");
+    if (levelEl) levelEl.textContent = fmt(river.m, 2);
+    const atEl = $("v-poa-at");
+    if (atEl) atEl.textContent = fmtStamp(river.at);
+    const tr = trendText(river.trend ?? 0);
+    const trendEl = $("v-poa-trend");
+    if (trendEl) {
+      trendEl.textContent = tr.text;
+      trendEl.dataset.dir = tr.dir;
+    }
+    updatePoaDisplay(river.m, river.trend);
+  }
+
+  async function loadPoaBonus() {
+    try {
+      const raw = await grab("/p/ng/portoalegre.json", 14000);
+      const river = parseRiverJson(raw);
+      if (river) paintPoaBonus(river);
+      else updatePoaDisplay(null);
+    } catch (_) {
+      updatePoaDisplay(null);
+    }
   }
 
   function parseAnaXml(xml, fallbackMs) {
@@ -476,6 +641,8 @@
       geo: `https://geocoding-api.open-meteo.com/v1/search?name=Lajeado&count=1&language=pt&countryCode=BR`,
       elev: `https://api.open-meteo.com/v1/elevation?latitude=${LAT}&longitude=${LON}`,
       lajeadoP: "/p/ng/lajeado.json",
+      lajeadoNg: "https://nivelguaiba.com.br/lajeado.json",
+      poaP: "/p/ng/portoalegre.json",
       anaP: `/p/ana?codEstacao=${ANA_LAJEADO}&dataInicio=${encodeURIComponent(br)}&dataFim=${encodeURIComponent(br)}`,
       anaMP: `/p/ana?codEstacao=${ANA_MUCUM}&dataInicio=${encodeURIComponent(br)}&dataFim=${encodeURIComponent(br)}`,
       inmetP: `/p/inmet/previsao/${GEO}`,
@@ -518,7 +685,7 @@
     const allEntries = [...unique.entries()];
     if (!quiet) link.begin(allEntries.length);
 
-    const coreKeys = new Set(["bestSimple", "flood", "lajeadoP"]);
+    const coreKeys = new Set(["bestSimple", "flood", "lajeadoP", "anaP", "allorigins"]);
     const core = allEntries.filter(([, keys]) => keys.some((k) => coreKeys.has(k)));
     const rest = allEntries.filter(([, keys]) => !keys.some((k) => coreKeys.has(k)));
 
@@ -616,20 +783,10 @@
         }
       }
 
-      let river = parseRiverJson(bag.lajeadoP);
-      if (!river && bag.allorigins) {
-        try {
-          const raw = bag.allorigins;
-          river = parseRiverJson(typeof raw === "string" ? JSON.parse(raw) : raw);
-        } catch (_) {}
-      }
-      const ana = parseAnaXml(bag.anaP, ms);
-      if (ana) {
-        if (!river || ana.at >= (river.at || 0)) {
-          river = { m: ana.m, at: ana.at, trend: river ? river.trend : 0 };
-        }
-      }
+      let river = pickRiverFromBag(bag, ms);
       if (river) state.lastRiver = river;
+      if (river) setRiverHint(false);
+      else if (!state.lastRiver.m) setRiverHint(true);
 
       const jsonSeries = seriesFromJson(bag.lajeadoP);
       const anaSeries = seriesFromAna(bag.anaP);
@@ -753,6 +910,8 @@
       state.forecast = data.forecast;
       state.target = levelToGauge(data.riverM);
       try { paintDash(data); } catch (err) { console.error(err); }
+      const poaRiver = parseRiverJson(bag.poaP);
+      if (poaRiver) paintPoaBonus(poaRiver);
       return data;
     };
 
@@ -849,7 +1008,7 @@
         hours: s.hours,
         risk: riskFromLevel(s.m),
         source: "sgb",
-        why: `SGB · ${s.hours} h`,
+        why: `Boletim SGB · previsão para ${s.hours} horas`,
         cities: cityProj
       };
     }
@@ -907,8 +1066,8 @@
     cityProj.estrela = cityProj.lajeado;
 
     const why = best.label
-      ? `${best.label} · ${best.hours} h`
-      : `tendência · ${best.hours} h`;
+      ? `Influência de ${best.label} · ~${best.hours} horas`
+      : `Com base na tendência atual · ~${best.hours} horas`;
 
     return {
       m: lajeadoProj,
@@ -934,18 +1093,103 @@
   }
 
   function riskFromLevel(m) {
-    if (m == null || !Number.isFinite(m)) return "low";
+    if (m == null || !Number.isFinite(m)) return "none";
     if (m >= COTA.inundacao) return "high";
     if (m >= COTA.alerta) return "mid";
     if (m >= COTA.atencao) return "watch";
     return "low";
   }
 
-  function riskText(risk) {
-    if (risk === "high") return "19 m";
-    if (risk === "mid") return "17 m";
-    if (risk === "watch") return "15 m";
-    return "--";
+  function statusLabel(risk) {
+    if (risk === "high") return "Inundação — 19 m ou mais";
+    if (risk === "mid") return "Alerta — 17 m ou mais";
+    if (risk === "watch") return "Atenção — 15 m ou mais";
+    return "Situação normal";
+  }
+
+  function weatherLabel(code, isDay) {
+    const wx = wxFromCode(code, isDay);
+    const labels = {
+      sun: "Sol",
+      moon: "Noite clara",
+      cloud: "Nublado",
+      rain: "Chuva",
+      storm: "Tempestade",
+      drizzle: "Garoa"
+    };
+    return { wx, text: labels[wx] || "—" };
+  }
+
+  function trendText(trend) {
+    if (trend == null || !Number.isFinite(trend)) return { text: "indisponível", dir: "flat" };
+    if (Math.abs(trend) < 1.5) return { text: "estável (quase parado)", dir: "flat" };
+    if (trend > 0) return { text: `subindo · +${fmt(trend, 1)} cm/h`, dir: "up" };
+    return { text: `descendo · ${fmt(trend, 1)} cm/h`, dir: "down" };
+  }
+
+  function weekdayShort(iso) {
+    try {
+      const label = new Intl.DateTimeFormat("pt-BR", {
+        weekday: "short",
+        timeZone: TZ
+      }).format(new Date(iso + "T12:00:00"));
+      return label.replace(/\.$/u, "");
+    } catch (_) {
+      return iso.slice(8, 10);
+    }
+  }
+
+  const WEATHER_ICON = {
+    sun: "☀️",
+    moon: "🌙",
+    cloud: "☁️",
+    rain: "🌧️",
+    storm: "⛈️",
+    drizzle: "🌦️"
+  };
+
+  function updateRiverDisplay(m) {
+    const risk = riskFromLevel(m);
+    const status = $("v-status");
+    if (status) {
+      status.textContent =
+        m != null && Number.isFinite(m)
+          ? statusLabel(risk)
+          : risk === "none"
+            ? "Medição indisponível"
+            : "Aguardando dados";
+      status.dataset.risk = risk;
+    }
+    const fill = $("level-fill");
+    const scale = document.querySelector(".level-scale");
+    if (fill) {
+      const pct =
+        m != null && Number.isFinite(m) ? clamp((m / COTA.inundacao) * 100, 0, 100) : 0;
+      fill.style.width = pct + "%";
+    }
+    if (scale) scale.dataset.risk = risk;
+    const hero = document.querySelector(".card--hero");
+    if (hero) hero.dataset.risk = risk;
+    document.body.dataset.risk = risk;
+    const theme = {
+      none: "#f1f5f9",
+      low: "#ecfdf5",
+      watch: "#fffbeb",
+      mid: "#fff7ed",
+      high: "#fef2f2"
+    };
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.setAttribute("content", theme[risk] || theme.none);
+    const pctEl = $("v-pct");
+    if (pctEl) {
+      pctEl.textContent =
+        m != null && Number.isFinite(m) ? fmt(levelToGauge(m), 0) : "--";
+    }
+    syncCotaLegend(m);
+    checkAlarm(m);
+    if (m != null && Number.isFinite(m)) {
+      document.title = `Rio ${fmt(m, 2)} m · Lajeado`;
+    }
   }
 
   function fmtStamp(ms) {
@@ -960,7 +1204,7 @@
         hour12: false
       }).formatToParts(new Date(ms));
       const g = (t) => p.find((x) => x.type === t)?.value || "--";
-      return `${g("hour")}:${g("minute")}  ${g("day")}/${g("month")}`;
+      return `${g("day")}/${g("month")} às ${g("hour")}:${g("minute")}`;
     } catch (_) {
       return "--:--";
     }
@@ -999,9 +1243,9 @@
       return cssH - 10 - t * (cssH - 20);
     };
     [
-      [15, "rgba(255,224,138,0.55)", "#ffe08a"],
-      [17, "rgba(255,179,71,0.6)", "#ffb347"],
-      [19, "rgba(255,107,94,0.7)", "#ff8a80"]
+      [15, "rgba(217, 119, 6, 0.35)", "#b45309"],
+      [17, "rgba(234, 88, 12, 0.4)", "#c2410c"],
+      [19, "rgba(185, 28, 28, 0.45)", "#b91c1c"]
     ].forEach(([m, col, lab]) => {
       const y = yOf(m);
       tctx.strokeStyle = col;
@@ -1012,10 +1256,10 @@
       tctx.lineTo(cssW - 4, y);
       tctx.stroke();
       tctx.setLineDash([]);
-      tctx.fillStyle = "#050b08";
+      tctx.fillStyle = "#fafaf9";
       tctx.fillRect(0, y - 8, padL, 16);
       tctx.fillStyle = lab;
-      tctx.font = "11px 'IBM Plex Mono', monospace";
+      tctx.font = "11px system-ui, sans-serif";
       tctx.textBaseline = "middle";
       tctx.fillText(String(m), 8, y);
     });
@@ -1029,7 +1273,15 @@
       if (i === 0) tctx.moveTo(x, y);
       else tctx.lineTo(x, y);
     });
-    tctx.strokeStyle = "#9cff6a";
+    const lastM = pts.length ? pts[pts.length - 1].v : null;
+    const lineRisk = riskFromLevel(lastM);
+    const lineColors = {
+      low: "#0d9488",
+      watch: "#d97706",
+      mid: "#ea580c",
+      high: "#dc2626"
+    };
+    tctx.strokeStyle = lineColors[lineRisk] || lineColors.low;
     tctx.lineWidth = 2;
     tctx.lineJoin = "round";
     tctx.lineCap = "round";
@@ -1060,12 +1312,12 @@
       list.innerHTML = rows.map((c, i) => {
         const home = c.home ? " home" : "";
         const meters = c.m != null ? `${fmt(c.m, 1)} m` : "--";
-        const cota = c.flood != null ? `cota ${fmt(c.flood, c.flood % 1 ? 1 : 0)}` : "";
+        const cota = c.flood != null ? `Inunda em ${fmt(c.flood, c.flood % 1 ? 1 : 0)} m` : "";
         let prev = "";
         if (c.proj && c.proj.m != null && Number.isFinite(c.proj.m)) {
           const showPrev = c.m == null || Math.abs(c.proj.m - c.m) >= 0.15;
           if (showPrev) {
-            prev = ` · prev ${fmt(c.proj.m, 1)} m/${c.proj.hours || "?"}h`;
+            prev = ` · Previsão ${fmt(c.proj.m, 1)} m em ~${c.proj.hours || "?"} h`;
           }
         }
         return `<li class="${home.trim()}" data-risk="${c.risk}"><i>${i + 1}</i><span>${c.label}</span><b>${meters}</b><em>${cota}${prev}</em></li>`;
@@ -1128,12 +1380,12 @@
     state.alarmOn = saved == null ? true : saved !== "0";
     if (btn) {
       btn.setAttribute("aria-pressed", state.alarmOn ? "true" : "false");
-      btn.textContent = state.alarmOn ? "ALARME" : "MUDO";
+      btn.textContent = state.alarmOn ? "Alarme ligado" : "Alarme desligado";
       btn.addEventListener("click", () => {
         state.alarmOn = !state.alarmOn;
         localStorage.setItem("alarmOn", state.alarmOn ? "1" : "0");
         btn.setAttribute("aria-pressed", state.alarmOn ? "true" : "false");
-        btn.textContent = state.alarmOn ? "ALARME" : "MUDO";
+        btn.textContent = state.alarmOn ? "Alarme ligado" : "Alarme desligado";
         const ac = getAudio();
         if (ac && ac.state === "suspended") ac.resume().catch(() => {});
       });
@@ -1158,31 +1410,47 @@
     $("v-river").textContent = fmt(d.riverM, 2);
     const stamp = $("v-river-at");
     if (stamp) stamp.textContent = fmtStamp(d.riverAt);
-    $("v-trend").textContent = fmt(d.trend, 1);
+    const trendEl = $("v-trend");
+    const tr =
+      d.riverM != null && Number.isFinite(d.riverM)
+        ? trendText(d.trend)
+        : { text: "aguardando medição", dir: "flat" };
+    if (trendEl) {
+      trendEl.textContent = tr.text;
+      trendEl.dataset.dir = tr.dir;
+    }
     $("v-mm-d").textContent = fmt(d.rainDay, 1);
     $("v-mm-w").textContent = fmt(d.rainWeek, 1);
     $("v-mm-m").textContent = fmt(d.rainMonth, 0);
     $("v-q").textContent = fmt(d.qNow, 0);
     $("v-soil").textContent = fmt(d.soil, 0);
-    $("wx-lamp").dataset.wx = wxFromCode(d.code, d.isDay);
+    const wLabel = $("v-weather-label");
+    if (wLabel) {
+      const w = weatherLabel(d.code, d.isDay);
+      wLabel.dataset.wx = w.wx;
+      const icon = wLabel.querySelector(".weather-icon");
+      const text = wLabel.querySelector(".weather-text");
+      if (icon) icon.textContent = WEATHER_ICON[w.wx] || "";
+      if (text) text.textContent = w.text;
+    }
 
     const week = $("week");
     week.innerHTML = "";
     const peak = Math.max(20, ...(d.rain7 || [0]));
     (d.times || []).slice(0, 7).forEach((iso, i) => {
       const mm = Number(d.rain7[i]) || 0;
-      const day = iso.slice(8, 10);
+      const dayNum = iso.slice(8, 10);
       const el = document.createElement("div");
-      el.className = "day";
-      el.innerHTML = `<span class="d">${day}</span><span class="mm">${fmt(mm, 1)}</span><small>mm</small><span class="bar"><i style="width:${clamp((mm / peak) * 100, 4, 100)}%"></i></span>`;
+      el.className = "day" + (i === 0 ? " day--today" : "");
+      if (mm >= 25) el.dataset.heavy = "1";
+      el.innerHTML = `<span class="d">${weekdayShort(iso)} ${dayNum}</span><span class="mm">${fmt(mm, 1)}</span><small>mm de chuva</small><span class="bar"><i style="width:${clamp((mm / peak) * 100, 4, 100)}%"></i></span>`;
       week.appendChild(el);
     });
 
     drawTrace(d.riverPts || state.riverPts);
     paintVale(d.vale || state.vale, d.forecast || state.forecast);
     paintForecast(d.forecast || state.forecast);
-    syncCotaLegend(d.riverM);
-    checkAlarm(d.riverM);
+    updateRiverDisplay(d.riverM);
   }
 
   function paintForecast(f) {
@@ -1195,156 +1463,18 @@
     const eta = $("v-proj-eta");
     const why = $("v-proj-why");
     if (proj) proj.textContent = fc.m != null ? fmt(fc.m, 2) : "--";
-    if (eta) eta.textContent = fc.hours != null ? `em ~${fc.hours} h` : "--";
+    if (eta) {
+      eta.textContent =
+        fc.hours != null ? `Estimativa para daqui a ~${fc.hours} horas` : "Horário indisponível";
+    }
     if (why) why.textContent = fc.why || "--";
   }
 
   function syncCotaLegend(m) {
     const risk = riskFromLevel(m);
     document.querySelectorAll(".cota-legend li").forEach((li) => {
-      li.classList.toggle("on", li.dataset.band === risk);
+      li.classList.toggle("on", risk !== "none" && li.dataset.band === risk);
     });
-  }
-
-  const canvas = $("needle-canvas");
-  const ctx = canvas.getContext("2d");
-
-  function resizeCanvas() {
-    const g = $("gauge");
-    const s = g.getBoundingClientRect();
-    const r = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(s.width * r);
-    canvas.height = Math.floor(s.height * r);
-  }
-
-  function drawNeedle(value) {
-    const w = canvas.width;
-    const h = canvas.height;
-    if (!w || !h) return;
-    ctx.clearRect(0, 0, w, h);
-    const cx = w / 2;
-    const cy = h / 2;
-    const len = Math.min(w, h) * 0.38;
-    const v = clamp(value, 0, 100);
-    const deg = 120 + (v / 100) * 300;
-    const ang = deg * Math.PI / 180;
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(ang);
-    ctx.shadowColor = "rgba(255, 40, 20, 0.55)";
-    ctx.shadowBlur = Math.min(w, h) * 0.03;
-
-    ctx.beginPath();
-    ctx.moveTo(-len * 0.22, -Math.max(2, w * 0.004));
-    ctx.lineTo(len, 0);
-    ctx.lineTo(-len * 0.22, Math.max(2, w * 0.004));
-    ctx.closePath();
-    const grd = ctx.createLinearGradient(-len * 0.2, 0, len, 0);
-    grd.addColorStop(0, "#7a140c");
-    grd.addColorStop(0.35, "#ff2a18");
-    grd.addColorStop(1, "#ffd0a8");
-    ctx.fillStyle = grd;
-    ctx.fill();
-
-    ctx.restore();
-  }
-
-  function tickNeedle() {
-    try {
-      const liveRiver = state.lastRiver.m != null && Number.isFinite(state.lastRiver.m)
-        ? state.lastRiver.m
-        : null;
-      const current = liveRiver != null ? liveRiver : state.data.riverM;
-      if (current != null && Number.isFinite(current)) {
-        state.target = levelToGauge(current);
-      } else if (state.data.chance != null) {
-        state.target = state.data.chance;
-      }
-
-      const shown = clamp(state.target, 0, 100);
-      state.needle = shown;
-      drawNeedle(shown);
-      $("v-pct").textContent = fmt(shown, 1);
-      document.title = `Taquari ${fmt(shown, 0)}%`;
-
-      const g = $("gauge");
-      const risk = riskFromLevel(current);
-      g.dataset.risk = risk;
-      const riskEl = $("v-risk");
-      if (riskEl) riskEl.textContent = riskText(risk);
-      syncCotaLegend(current);
-      checkAlarm(current);
-    } catch (err) {
-      console.error(err);
-    }
-    requestAnimationFrame(tickNeedle);
-  }
-
-  function bindKnob(el, { angle, min, max, wrap, onChange, onClick }) {
-    if (!el) return { set() {}, get: () => angle };
-    let cur = angle || 0;
-    const apply = (a, fromUser) => {
-      if (wrap) a = ((a % 360) + 360) % 360;
-      else a = clamp(a, min ?? -180, max ?? 180);
-      cur = a;
-      el.style.transform = `rotate(${a}deg)`;
-      if (fromUser && onChange) onChange(a);
-    };
-    apply(cur, false);
-
-    const handle = el.closest(".knob-col") || el;
-    const hub = () => {
-      const r = el.getBoundingClientRect();
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-    };
-
-    let drag = false;
-    let lastAng = 0;
-    let moved = 0;
-    let pointerId = null;
-
-    handle.addEventListener("pointerdown", (ev) => {
-      if (ev.target.closest && ev.target.closest(".pwr")) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      drag = true;
-      moved = 0;
-      pointerId = ev.pointerId;
-      const c = hub();
-      lastAng = Math.atan2(ev.clientY - c.y, ev.clientX - c.x) * 180 / Math.PI;
-      try { handle.setPointerCapture(ev.pointerId); } catch (_) {}
-    });
-    handle.addEventListener("pointermove", (ev) => {
-      if (!drag || (pointerId != null && ev.pointerId !== pointerId)) return;
-      const c = hub();
-      const rx = ev.clientX - c.x;
-      const ry = ev.clientY - c.y;
-      const dist = Math.hypot(rx, ry);
-      const ang = Math.atan2(ry, rx) * 180 / Math.PI;
-      let delta = ang - lastAng;
-      if (delta > 180) delta -= 360;
-      if (delta < -180) delta += 360;
-      lastAng = ang;
-      moved += Math.abs(delta);
-      if (dist < 8) return;
-      if (Math.abs(delta) > 45) return;
-      apply(cur + delta, true);
-    });
-    handle.addEventListener("pointerup", (ev) => {
-      if (pointerId != null && ev.pointerId !== pointerId) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (moved < 12 && onClick) onClick();
-      drag = false;
-      pointerId = null;
-    });
-    handle.addEventListener("pointercancel", () => { drag = false; pointerId = null; });
-    handle.addEventListener("wheel", (ev) => {
-      ev.preventDefault();
-      apply(cur + (ev.deltaY > 0 ? 18 : -18), true);
-    }, { passive: false });
-    return { set: (a) => apply(a, false), get: () => cur };
   }
 
   function initRadio() {
@@ -1398,13 +1528,30 @@
     };
     sortTune();
 
+    const select = $("radio-select");
+    const volInput = $("radio-vol");
+
+    const fillSelect = () => {
+      if (!select) return;
+      select.innerHTML = stations
+        .map(
+          (s, i) =>
+            `<option value="${i}">${fmtFreq(s.mhz)} MHz — ${s.name}</option>`
+        )
+        .join("");
+      select.value = String(idx);
+    };
+
     const paintStation = () => {
       const s = stations[idx] || stations[0];
       if (!s) return;
-      $("radio-freq").textContent = fmtFreq(s.mhz);
-      $("radio-name").textContent = s.name;
-      $("radio-city").textContent = s.city;
-      $("radio-band").textContent = s.mhz > 200 ? "AM" : "FM";
+      const freqEl = $("radio-freq");
+      if (freqEl) freqEl.textContent = `${fmtFreq(s.mhz)} MHz`;
+      const nameEl = $("radio-name");
+      if (nameEl) nameEl.textContent = s.name;
+      const cityEl = $("radio-city");
+      if (cityEl) cityEl.textContent = s.city;
+      if (select) select.value = String(idx);
     };
 
     const play = async () => {
@@ -1443,9 +1590,11 @@
         on = true;
         panel.classList.add("on");
         pwr.setAttribute("aria-pressed", "true");
+        pwr.textContent = "Parar";
       } catch (_) {
         on = false;
         panel.classList.remove("on");
+        pwr.textContent = "Reproduzir";
       }
     };
 
@@ -1455,56 +1604,35 @@
       on = false;
       panel.classList.remove("on");
       pwr.setAttribute("aria-pressed", "false");
+      pwr.textContent = "Reproduzir";
     };
 
-    pwr.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      if (on) stop();
-      else play();
-    });
-    const lcd = $("radio-lcd");
-    if (lcd) {
-      lcd.addEventListener("click", () => {
+    if (pwr) {
+      pwr.addEventListener("click", (ev) => {
+        ev.stopPropagation();
         if (on) stop();
         else play();
       });
     }
 
-    const skip = (dir) => {
-      idx = (idx + dir + stations.length) % stations.length;
-      paintStation();
-      play();
-    };
+    if (select) {
+      select.addEventListener("change", () => {
+        idx = clamp(Number(select.value) || 0, 0, stations.length - 1);
+        paintStation();
+        if (on) play();
+      });
+    }
 
-    let prevTune = 0;
-    let tuneAccum = 0;
-    bindKnob($("knob-tune"), {
-      angle: 0,
-      wrap: true,
-      onClick: () => skip(1),
-      onChange: (a) => {
-        let delta = a - prevTune;
-        if (delta > 180) delta -= 360;
-        if (delta < -180) delta += 360;
-        prevTune = a;
-        tuneAccum += delta;
-        if (Math.abs(tuneAccum) < 22) return;
-        skip(tuneAccum > 0 ? 1 : -1);
-        tuneAccum = 0;
-      }
-    });
-
-    bindKnob($("knob-vol"), {
-      angle: 55,
-      min: -135,
-      max: 135,
-      wrap: false,
-      onChange: (a) => {
-        vol = clamp((a + 135) / 270, 0, 1);
+    if (volInput) {
+      volInput.addEventListener("input", () => {
+        vol = clamp(Number(volInput.value) / 100, 0, 1);
         audio.volume = vol;
-      }
-    });
+      });
+      vol = clamp(Number(volInput.value) / 100, 0, 1);
+      audio.volume = vol;
+    }
 
+    fillSelect();
     paintStation();
 
     const radioUrls = [
@@ -1537,6 +1665,7 @@
             }
           });
           sortTune();
+          fillSelect();
           paintStation();
           break;
         } catch (_) {}
@@ -1545,13 +1674,7 @@
   }
 
   async function boot() {
-    try {
-      resizeCanvas();
-    } catch (err) {
-      console.error(err);
-    }
     window.addEventListener("resize", () => {
-      try { resizeCanvas(); } catch (err) { console.error(err); }
       try { drawTrace(state.riverPts); } catch (err) { console.error(err); }
     });
     try { initAlarm(); } catch (err) { console.error(err); }
@@ -1560,11 +1683,22 @@
       navigator.serviceWorker.register("./sw.js").catch(() => {});
     }
     paintClock();
-    setInterval(paintClock, 200);
-    requestAnimationFrame(tickNeedle);
+    setInterval(paintClock, 1000);
     try { initRadio(); } catch (err) { console.error(err); }
 
     syncTime().catch(() => {});
+
+    try {
+      await loadRiverQuick();
+    } catch (err) {
+      console.error(err);
+    }
+
+    try {
+      await loadPoaBonus();
+    } catch (err) {
+      console.error(err);
+    }
 
     try {
       await loadAll();

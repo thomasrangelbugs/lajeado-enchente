@@ -1,17 +1,10 @@
-const CACHE = "enchente-v19";
+const CACHE = "enchente-v20";
 const SHELL = [
   "./",
   "./index.html",
   "./css/style.css",
   "./js/app.js",
-  "./manifest.json",
-  "./img/gauge-face.webp",
-  "./img/needle.webp",
-  "./img/weather-icons.webp",
-  "./img/knob.webp",
-  "./img/favicon.webp",
-  "./img/icon-192.png",
-  "./img/icon-512.png"
+  "./manifest.json"
 ];
 
 self.addEventListener("install", (event) => {

@@ -1,12 +1,12 @@
 {
-  "name": "Taquari Lajeado",
+  "name": "Rio Taquari · Lajeado",
   "short_name": "Taquari",
-  "description": "Painel do Rio Taquari em Lajeado: cotas, níveis e clima.",
+  "description": "Nível do Rio Taquari em Lajeado, clima e previsão.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
-  "background_color": "#050505",
-  "theme_color": "#050505",
+  "background_color": "#ecfdf5",
+  "theme_color": "#ecfdf5",
   "lang": "pt-BR",
   "icons": [
     {
