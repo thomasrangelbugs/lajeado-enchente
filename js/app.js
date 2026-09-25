@@ -945,7 +945,6 @@
       state.target = levelToGauge(data.riverM);
       try { paintDash(data); } catch (err) { console.error(err); }
       const poaRiver = parseRiverJson(bag.poaP);
-      const poaRiver = parseRiverJson(bag.poaP);
       if (poaRiver) {
         state.poa = poaRiver;
         paintActiveCity();
