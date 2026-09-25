@@ -21,10 +21,14 @@
   <div class="app" id="conteudo">
     <header class="site-header">
       <div class="site-header__top">
-        <h1>Rio Taquari em Lajeado</h1>
+        <h1 id="site-title">Rio Taquari em Lajeado</h1>
         <time class="site-clock" id="v-time" datetime="">--:--</time>
       </div>
       <p class="site-date" id="v-date">--</p>
+      <label class="city-picker">
+        <span class="city-picker__label">Cidade</span>
+        <select id="city-select" aria-label="Escolher cidade para acompanhar o nível do rio"></select>
+      </label>
       <p class="disclaimer">
         Dados estimados de fontes públicas. <strong>Não substituem alerta oficial.</strong>
         Em emergência, ligue <a href="tel:199">199</a> (Defesa Civil).
@@ -62,26 +66,19 @@
         <code>npx netlify dev</code> ou publique no Netlify — o atalho <code>npx serve</code> não repassa os dados do rio.
       </p>
 
-      <div class="level-scale" aria-hidden="false" role="img" aria-label="Escala do nível do rio em relação às cotas oficiais">
+      <div class="level-scale" id="level-scale" aria-hidden="false" role="img" aria-label="Escala do nível do rio em relação às cotas oficiais">
         <div class="level-scale__track">
           <div class="level-scale__fill" id="level-fill"></div>
-          <span class="level-mark" style="--at: 78.9%"><span>15 m</span><small>Atenção</small></span>
-          <span class="level-mark" style="--at: 89.5%"><span>17 m</span><small>Alerta</small></span>
-          <span class="level-mark level-mark--max" style="--at: 100%"><span>19 m</span><small>Inundação</small></span>
+          <div id="level-marks"></div>
         </div>
         <div class="level-scale__labels">
           <span>0 m</span>
-          <span id="v-pct-wrap">Equivalente a <b id="v-pct">--</b>% da cota de inundação (19 m)</span>
+          <span id="v-pct-wrap">Equivalente a <b id="v-pct">--</b>% da cota de inundação</span>
         </div>
       </div>
 
-      <ul class="cota-legend" aria-label="Faixa oficial atual">
-        <li data-band="low"><span class="cota-name">Abaixo de 15 m</span><span class="cota-desc">Situação normal</span></li>
-        <li data-band="watch"><span class="cota-name">15 m</span><span class="cota-desc">Atenção</span></li>
-        <li data-band="mid"><span class="cota-name">17 m</span><span class="cota-desc">Alerta</span></li>
-        <li data-band="high"><span class="cota-name">19 m</span><span class="cota-desc">Inundação</span></li>
-      </ul>
-      <p class="help-text">Régua Estrela/Lajeado (SGB / Defesa Civil). A barra cheia em 19 m corresponde à cota de inundação.</p>
+      <ul class="cota-legend" id="cota-legend" aria-label="Faixa oficial atual"></ul>
+      <p class="help-text" id="hero-help">Régua Estrela/Lajeado (SGB / Defesa Civil). A barra cheia corresponde à cota de inundação.</p>
     </section>
 
     <aside class="card card--forecast" id="forecast" data-src="none" aria-labelledby="titulo-previsao">
@@ -163,46 +160,6 @@
       <h2>Chuva prevista — próximos 7 dias</h2>
       <div class="week" id="week"></div>
     </section>
-
-    <details class="bonus-poa card" id="bonus-poa">
-      <summary>Extra · Porto Alegre (Lago Guaíba)</summary>
-      <p class="bonus-poa__intro">
-        Referência <strong>separada</strong> do Taquari em Lajeado. Enchentes no Vale podem levar dias até refletir no Guaíba.
-      </p>
-      <div class="poa-hero">
-        <p class="poa-hero__value">
-          <b id="v-poa-river">--</b>
-          <span class="unit">metros</span>
-        </p>
-        <p class="status-badge status-badge--poa" id="v-poa-status" data-risk="none">Aguardando dados</p>
-      </div>
-      <p class="river-meta poa-meta">
-        Última medição: <span id="v-poa-at">--</span>
-        · Tendência: <span class="trend-text" id="v-poa-trend" data-dir="flat">--</span>
-      </p>
-      <div class="level-scale level-scale--poa" id="poa-scale" data-risk="none">
-        <div class="level-scale__track">
-          <div class="level-scale__fill" id="poa-fill"></div>
-          <span class="level-mark" style="--at: 71.4%"><span>2,0 m</span><small>Atenção</small></span>
-          <span class="level-mark" style="--at: 83.9%"><span>2,35 m</span><small>Alerta</small></span>
-          <span class="level-mark level-mark--max" style="--at: 100%"><span>2,8 m</span><small>Referência alta</small></span>
-        </div>
-        <div class="level-scale__labels">
-          <span>0 m</span>
-          <span>Escala orientativa · Cais / ilhas (POA)</span>
-        </div>
-      </div>
-      <ul class="cota-legend cota-legend--poa" aria-label="Faixa Guaíba">
-        <li data-band="low"><span class="cota-name">Abaixo de 2,0 m</span><span class="cota-desc">Sem alerta usual</span></li>
-        <li data-band="watch"><span class="cota-name">2,0 m</span><span class="cota-desc">Atenção · ilhas</span></li>
-        <li data-band="mid"><span class="cota-name">2,35 m</span><span class="cota-desc">Alerta</span></li>
-        <li data-band="high"><span class="cota-name">2,55 m+</span><span class="cota-desc">Cheia relevante</span></li>
-      </ul>
-      <p class="help-text">
-        Fonte: nivelguaiba.com.br (Porto Alegre). Cotas aproximadas com base em alertas da Defesa Civil de POA e medições SGB — confirme nos
-        <a href="https://www.prefeitura.poa.br/defesa-civil" rel="noopener noreferrer" target="_blank">canais oficiais</a>.
-      </p>
-    </details>
 
     <nav class="help-bar" aria-label="Telefones de emergência">
       <a href="tel:199"><span class="help-num">199</span>Defesa Civil</a>

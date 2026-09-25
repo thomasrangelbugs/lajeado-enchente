@@ -8,14 +8,6 @@
     inundacao: 19
   };
 
-  /* Guaíba · POA — cotas orientativas (Cais / ilhas; Defesa Civil POA / SGB). */
-  const COTA_POA = {
-    atencao: 2,
-    alerta: 2.35,
-    inundacao: 2.55,
-    barMax: 2.8
-  };
-
   /* Cotas SGB/SAH Taquari (m). Estrela e Lajeado compartilham a regua 86879300. */
   const UPSTREAM = [
     { slug: "santatereza", alt: ["santa-tereza"], flood: 15, alerta: 9, atencao: 6 },
@@ -36,6 +28,115 @@
     { slug: "bomretirodosul", label: "Bom Retiro", x: 84, y: 28, flood: 16.5, alerta: 12, atencao: 9, lagH: -2 },
     { slug: "taquari", label: "Taquari", x: 96, y: 50, flood: 8.5, alerta: 6.5, atencao: 4, lagH: -4 }
   ];
+
+  /* Cidades do seletor: Lajeado padrão + Vale + Guaíba (POA). */
+  const CITIES = [
+    {
+      slug: "lajeado",
+      label: "Lajeado",
+      group: "Vale do Taquari",
+      flood: 19,
+      alerta: 17,
+      atencao: 15,
+      home: true,
+      help: "Régua Estrela/Lajeado (SGB / Defesa Civil). A barra cheia corresponde à cota de inundação."
+    },
+    {
+      slug: "estrela",
+      label: "Estrela",
+      group: "Vale do Taquari",
+      flood: 19,
+      alerta: 17,
+      atencao: 15,
+      sameAs: "lajeado",
+      help: "Mesma régua de Lajeado (Estrela/Lajeado · SGB / Defesa Civil)."
+    },
+    {
+      slug: "santatereza",
+      label: "Santa Tereza",
+      group: "Vale do Taquari",
+      flood: 15,
+      alerta: 9,
+      atencao: 6,
+      help: "Cotas locais da estação Santa Tereza (montante do Taquari)."
+    },
+    {
+      slug: "mucum",
+      label: "Muçum",
+      group: "Vale do Taquari",
+      flood: 18,
+      alerta: 9,
+      atencao: 6,
+      help: "Cotas locais da estação Muçum (montante do Taquari)."
+    },
+    {
+      slug: "encantado",
+      label: "Encantado",
+      group: "Vale do Taquari",
+      flood: 12,
+      alerta: 9,
+      atencao: 6,
+      help: "Cotas locais da estação Encantado (montante do Taquari)."
+    },
+    {
+      slug: "rocasales",
+      label: "Roca Sales",
+      group: "Vale do Taquari",
+      flood: 18,
+      alerta: 9,
+      atencao: 6,
+      help: "Cotas locais da estação Roca Sales (montante do Taquari)."
+    },
+    {
+      slug: "bomretirodosul",
+      label: "Bom Retiro do Sul",
+      group: "Vale do Taquari",
+      flood: 16.5,
+      alerta: 12,
+      atencao: 9,
+      help: "Cotas locais da estação Bom Retiro do Sul."
+    },
+    {
+      slug: "taquari",
+      label: "Taquari",
+      group: "Vale do Taquari",
+      flood: 8.5,
+      alerta: 6.5,
+      atencao: 4,
+      help: "Cotas locais da estação Taquari (jusante)."
+    },
+    {
+      slug: "portoalegre",
+      label: "Porto Alegre",
+      group: "Lago Guaíba",
+      flood: 2.55,
+      alerta: 2.35,
+      atencao: 2,
+      barMax: 2.8,
+      basin: "guaiba",
+      help: "Escala orientativa do Guaíba (Cais / ilhas · Defesa Civil POA / SGB). Não é a mesma régua do Taquari."
+    }
+  ];
+
+  function getCity(slug) {
+    return CITIES.find((c) => c.slug === slug) || CITIES[0];
+  }
+
+  function cityCotas(city) {
+    const c = city || getCity(state.activeCity);
+    return {
+      atencao: c.atencao,
+      alerta: c.alerta,
+      inundacao: c.flood,
+      barMax: c.barMax != null ? c.barMax : c.flood
+    };
+  }
+
+  function fmtMeters(n) {
+    if (n == null || !Number.isFinite(n)) return "--";
+    const d = Math.abs(n - Math.round(n)) < 0.05 ? 0 : (n < 10 ? 2 : 1);
+    return fmt(n, d);
+  }
 
   /* Lag tipico ate Lajeado (h), alinhado ao SAH/SGB. */
   const WAVE_DRIVERS = [
@@ -116,6 +217,8 @@
     vale: {},
     valeMeta: {},
     forecast: null,
+    poa: null,
+    activeCity: "lajeado",
     alarmOn: true,
     alarmBand: null
   };
@@ -439,23 +542,14 @@
         const j = parseMaybeJson(raw);
         const pts = url.includes("/p/ana") ? seriesFromAna(raw) : seriesFromJson(j ?? raw);
         if (pts.length) state.riverPts = pts;
-        $("v-river").textContent = fmt(river.m, 2);
-        const stamp = $("v-river-at");
-        if (stamp) stamp.textContent = fmtStamp(river.at);
-        const tr = trendText(river.trend);
-        const trendEl = $("v-trend");
-        if (trendEl) {
-          trendEl.textContent = tr.text;
-          trendEl.dataset.dir = tr.dir;
-        }
-        updateRiverDisplay(river.m);
         setRiverHint(false);
         drawTrace(state.riverPts);
+        paintActiveCity();
         return river;
       } catch (_) {}
     }
     setRiverHint(true);
-    updateRiverDisplay(null);
+    paintActiveCity();
     return null;
   }
 
@@ -464,75 +558,15 @@
     if (el) el.hidden = !show;
   }
 
-  function poaRiskFromLevel(m) {
-    if (m == null || !Number.isFinite(m)) return "none";
-    if (m >= COTA_POA.inundacao) return "high";
-    if (m >= COTA_POA.alerta) return "mid";
-    if (m >= COTA_POA.atencao) return "watch";
-    return "low";
-  }
-
-  function poaStatusLabel(risk) {
-    if (risk === "high") return "Cheia relevante no Guaíba";
-    if (risk === "mid") return "Alerta — ilhas e ribeiras";
-    if (risk === "watch") return "Atenção — começo de alagamentos";
-    return "Sem alerta usual";
-  }
-
-  function syncPoaLegend(m) {
-    const risk = poaRiskFromLevel(m);
-    document.querySelectorAll(".cota-legend--poa li").forEach((li) => {
-      li.classList.toggle("on", risk !== "none" && li.dataset.band === risk);
-    });
-  }
-
-  function updatePoaDisplay(m, trend) {
-    const risk = poaRiskFromLevel(m);
-    const status = $("v-poa-status");
-    if (status) {
-      status.textContent =
-        m != null && Number.isFinite(m) ? poaStatusLabel(risk) : "Medição indisponível";
-      status.dataset.risk = risk;
-    }
-    const fill = $("poa-fill");
-    const scale = $("poa-scale");
-    if (fill) {
-      const pct =
-        m != null && Number.isFinite(m)
-          ? clamp((m / COTA_POA.barMax) * 100, 0, 100)
-          : 0;
-      fill.style.width = pct + "%";
-    }
-    if (scale) scale.dataset.risk = risk;
-    syncPoaLegend(m);
-  }
-
-  function paintPoaBonus(river) {
-    if (!river || !Number.isFinite(river.m)) {
-      updatePoaDisplay(null);
-      return;
-    }
-    const levelEl = $("v-poa-river");
-    if (levelEl) levelEl.textContent = fmt(river.m, 2);
-    const atEl = $("v-poa-at");
-    if (atEl) atEl.textContent = fmtStamp(river.at);
-    const tr = trendText(river.trend ?? 0);
-    const trendEl = $("v-poa-trend");
-    if (trendEl) {
-      trendEl.textContent = tr.text;
-      trendEl.dataset.dir = tr.dir;
-    }
-    updatePoaDisplay(river.m, river.trend);
-  }
-
   async function loadPoaBonus() {
     try {
       const raw = await grab("/p/ng/portoalegre.json", 14000);
       const river = parseRiverJson(raw);
-      if (river) paintPoaBonus(river);
-      else updatePoaDisplay(null);
+      state.poa = river;
+      paintActiveCity();
     } catch (_) {
-      updatePoaDisplay(null);
+      state.poa = null;
+      paintActiveCity();
     }
   }
 
@@ -911,7 +945,11 @@
       state.target = levelToGauge(data.riverM);
       try { paintDash(data); } catch (err) { console.error(err); }
       const poaRiver = parseRiverJson(bag.poaP);
-      if (poaRiver) paintPoaBonus(poaRiver);
+      const poaRiver = parseRiverJson(bag.poaP);
+      if (poaRiver) {
+        state.poa = poaRiver;
+        paintActiveCity();
+      }
       return data;
     };
 
@@ -1079,11 +1117,16 @@
     };
   }
 
-  function levelToGauge(m) {
+  function levelToGauge(m, city) {
+    const cotas = cityCotas(city);
     if (m == null || !Number.isFinite(m) || m <= 0) return 0;
-    if (m < COTA.atencao) return 40 * (m / COTA.atencao);
-    if (m < COTA.alerta) return 40 + 30 * ((m - COTA.atencao) / (COTA.alerta - COTA.atencao));
-    if (m < COTA.inundacao) return 70 + 30 * ((m - COTA.alerta) / (COTA.inundacao - COTA.alerta));
+    if (m < cotas.atencao) return 40 * (m / cotas.atencao);
+    if (m < cotas.alerta) {
+      return 40 + 30 * ((m - cotas.atencao) / Math.max(0.01, cotas.alerta - cotas.atencao));
+    }
+    if (m < cotas.inundacao) {
+      return 70 + 30 * ((m - cotas.alerta) / Math.max(0.01, cotas.inundacao - cotas.alerta));
+    }
     return 100;
   }
 
@@ -1092,18 +1135,21 @@
     return f.m != null ? f.m : d.riverM;
   }
 
-  function riskFromLevel(m) {
+  function riskFromLevel(m, city) {
     if (m == null || !Number.isFinite(m)) return "none";
-    if (m >= COTA.inundacao) return "high";
-    if (m >= COTA.alerta) return "mid";
-    if (m >= COTA.atencao) return "watch";
+    const cotas = cityCotas(city);
+    if (m >= cotas.inundacao) return "high";
+    if (m >= cotas.alerta) return "mid";
+    if (m >= cotas.atencao) return "watch";
     return "low";
   }
 
-  function statusLabel(risk) {
-    if (risk === "high") return "Inundação — 19 m ou mais";
-    if (risk === "mid") return "Alerta — 17 m ou mais";
-    if (risk === "watch") return "Atenção — 15 m ou mais";
+  function statusLabel(risk, city) {
+    const cotas = cityCotas(city);
+    if (risk === "high") return `Inundação — ${fmtMeters(cotas.inundacao)} m ou mais`;
+    if (risk === "mid") return `Alerta — ${fmtMeters(cotas.alerta)} m ou mais`;
+    if (risk === "watch") return `Atenção — ${fmtMeters(cotas.atencao)} m ou mais`;
+    if (city && city.basin === "guaiba") return "Sem alerta usual";
     return "Situação normal";
   }
 
@@ -1148,23 +1194,160 @@
     drizzle: "🌦️"
   };
 
-  function updateRiverDisplay(m) {
-    const risk = riskFromLevel(m);
+  function renderCityScale(city) {
+    const cotas = cityCotas(city);
+    const marks = $("level-marks");
+    const legend = $("cota-legend");
+    const help = $("hero-help");
+    const pctWrap = $("v-pct-wrap");
+    if (help) help.textContent = city.help || "";
+    if (pctWrap) {
+      pctWrap.innerHTML = `Equivalente a <b id="v-pct">--</b>% da cota de inundação (${fmtMeters(cotas.inundacao)} m)`;
+    }
+    if (marks) {
+      const rows = [
+        { m: cotas.atencao, label: "Atenção" },
+        { m: cotas.alerta, label: "Alerta" },
+        { m: cotas.inundacao, label: city.basin === "guaiba" ? "Cheia relevante" : "Inundação", max: true }
+      ];
+      marks.innerHTML = rows
+        .map((r) => {
+          const at = clamp((r.m / cotas.barMax) * 100, 0, 100);
+          return `<span class="level-mark${r.max ? " level-mark--max" : ""}" style="--at:${at}%"><span>${fmtMeters(r.m)} m</span><small>${r.label}</small></span>`;
+        })
+        .join("");
+    }
+    if (legend) {
+      legend.innerHTML = [
+        `<li data-band="low"><span class="cota-name">Abaixo de ${fmtMeters(cotas.atencao)} m</span><span class="cota-desc">${city.basin === "guaiba" ? "Sem alerta usual" : "Situação normal"}</span></li>`,
+        `<li data-band="watch"><span class="cota-name">${fmtMeters(cotas.atencao)} m</span><span class="cota-desc">Atenção</span></li>`,
+        `<li data-band="mid"><span class="cota-name">${fmtMeters(cotas.alerta)} m</span><span class="cota-desc">Alerta</span></li>`,
+        `<li data-band="high"><span class="cota-name">${fmtMeters(cotas.inundacao)} m</span><span class="cota-desc">${city.basin === "guaiba" ? "Cheia relevante" : "Inundação"}</span></li>`
+      ].join("");
+    }
+  }
+
+  function readingForCity(slug) {
+    const city = getCity(slug);
+    const key = city.sameAs || city.slug;
+    if (key === "portoalegre") {
+      const p = state.poa;
+      if (!p) return { m: null, at: null, trend: null, proj: null };
+      return {
+        m: p.m,
+        at: p.at,
+        trend: p.trend,
+        proj: p.m != null ? { m: p.m, hours: null, why: "Medição atual do Guaíba", risk: riskFromLevel(p.m, city), source: "guaiba" } : null
+      };
+    }
+    if (key === "lajeado") {
+      const m = state.lastRiver.m != null ? state.lastRiver.m : state.data.riverM;
+      const at = state.lastRiver.at || state.data.riverAt;
+      const trend = state.lastRiver.trend != null ? state.lastRiver.trend : state.data.trend;
+      const fc = state.forecast || state.data.forecast;
+      return { m, at, trend, proj: fc };
+    }
+    const meta = (state.valeMeta && state.valeMeta[key]) || {};
+    const m = meta.m != null ? meta.m : (state.vale && state.vale[key]);
+    const projCity =
+      (state.forecast && state.forecast.cities && state.forecast.cities[key]) ||
+      (state.data.forecast && state.data.forecast.cities && state.data.forecast.cities[key]) ||
+      null;
+    let proj = null;
+    if (projCity && projCity.m != null) {
+      proj = {
+        m: projCity.m,
+        hours: projCity.hours,
+        why: projCity.source === "sgb" ? `Boletim SGB · ~${projCity.hours || "?"} h` : `Estimativa local · ~${projCity.hours || "?"} h`,
+        risk: riskFromLevel(projCity.m, city),
+        source: projCity.source || "vale"
+      };
+    }
+    return { m, at: meta.at, trend: meta.trend, proj };
+  }
+
+  function paintActiveCity() {
+    const city = getCity(state.activeCity);
+    renderCityScale(city);
+    const reading = readingForCity(city.slug);
+    const title = $("site-title");
+    if (title) {
+      title.textContent =
+        city.basin === "guaiba"
+          ? `Lago Guaíba em ${city.label}`
+          : `Rio Taquari em ${city.label}`;
+    }
+    const riverEl = $("v-river");
+    if (riverEl) riverEl.textContent = fmt(reading.m, 2);
+    const stamp = $("v-river-at");
+    if (stamp) stamp.textContent = fmtStamp(reading.at);
+    const trendEl = $("v-trend");
+    const tr =
+      reading.m != null && Number.isFinite(reading.m)
+        ? trendText(reading.trend)
+        : { text: "aguardando medição", dir: "flat" };
+    if (trendEl) {
+      trendEl.textContent = tr.text;
+      trendEl.dataset.dir = tr.dir;
+    }
+    updateRiverDisplay(reading.m, city);
+    paintForecast(reading.proj, city);
+    const hint = $("river-hint");
+    if (hint) {
+      const show =
+        (city.slug === "lajeado" || city.sameAs === "lajeado") &&
+        (reading.m == null || !Number.isFinite(reading.m));
+      hint.hidden = !show;
+    }
+  }
+
+  function initCitySelect() {
+    const sel = $("city-select");
+    if (!sel) return;
+    const saved = localStorage.getItem("activeCity");
+    if (saved && CITIES.some((c) => c.slug === saved)) state.activeCity = saved;
+    const groups = {};
+    CITIES.forEach((c) => {
+      if (!groups[c.group]) groups[c.group] = [];
+      groups[c.group].push(c);
+    });
+    sel.innerHTML = Object.entries(groups)
+      .map(([group, list]) => {
+        const opts = list
+          .map((c) => `<option value="${c.slug}">${c.label}</option>`)
+          .join("");
+        return `<optgroup label="${group}">${opts}</optgroup>`;
+      })
+      .join("");
+    sel.value = state.activeCity;
+    sel.addEventListener("change", () => {
+      state.activeCity = sel.value || "lajeado";
+      localStorage.setItem("activeCity", state.activeCity);
+      state.alarmBand = null;
+      paintActiveCity();
+    });
+    paintActiveCity();
+  }
+
+  function updateRiverDisplay(m, cityArg) {
+    const city = cityArg || getCity(state.activeCity);
+    const cotas = cityCotas(city);
+    const risk = riskFromLevel(m, city);
     const status = $("v-status");
     if (status) {
       status.textContent =
         m != null && Number.isFinite(m)
-          ? statusLabel(risk)
+          ? statusLabel(risk, city)
           : risk === "none"
             ? "Medição indisponível"
             : "Aguardando dados";
       status.dataset.risk = risk;
     }
     const fill = $("level-fill");
-    const scale = document.querySelector(".level-scale");
+    const scale = $("level-scale") || document.querySelector(".level-scale");
     if (fill) {
       const pct =
-        m != null && Number.isFinite(m) ? clamp((m / COTA.inundacao) * 100, 0, 100) : 0;
+        m != null && Number.isFinite(m) ? clamp((m / cotas.barMax) * 100, 0, 100) : 0;
       fill.style.width = pct + "%";
     }
     if (scale) scale.dataset.risk = risk;
@@ -1183,12 +1366,12 @@
     const pctEl = $("v-pct");
     if (pctEl) {
       pctEl.textContent =
-        m != null && Number.isFinite(m) ? fmt(levelToGauge(m), 0) : "--";
+        m != null && Number.isFinite(m) ? fmt(levelToGauge(m, city), 0) : "--";
     }
-    syncCotaLegend(m);
-    checkAlarm(m);
+    syncCotaLegend(m, city);
+    if (city.home || city.sameAs === "lajeado") checkAlarm(m, city);
     if (m != null && Number.isFinite(m)) {
-      document.title = `Rio ${fmt(m, 2)} m · Lajeado`;
+      document.title = `${city.label} ${fmt(m, 2)} m`;
     }
   }
 
@@ -1333,10 +1516,11 @@
     return audioCtx;
   }
 
-  function alarmBandOf(m) {
+  function alarmBandOf(m, city) {
     if (m == null || !Number.isFinite(m)) return 0;
-    if (m >= COTA.inundacao) return 2;
-    if (m >= COTA.alerta) return 1;
+    const cotas = cityCotas(city);
+    if (m >= cotas.inundacao) return 2;
+    if (m >= cotas.alerta) return 1;
     return 0;
   }
 
@@ -1363,9 +1547,9 @@
     if (band >= 2) chirp(1480, t0 + 0.42, 0.22);
   }
 
-  function checkAlarm(m) {
+  function checkAlarm(m, city) {
     if (m == null || !Number.isFinite(m)) return;
-    const band = alarmBandOf(m);
+    const band = alarmBandOf(m, city);
     if (state.alarmBand == null) {
       state.alarmBand = band;
       return;
@@ -1407,18 +1591,6 @@
     $("v-gust").textContent = fmt(d.gust, 0);
     $("v-uv").textContent = fmt(d.uv, 1);
     $("v-cloud").textContent = fmt(d.cloud, 0);
-    $("v-river").textContent = fmt(d.riverM, 2);
-    const stamp = $("v-river-at");
-    if (stamp) stamp.textContent = fmtStamp(d.riverAt);
-    const trendEl = $("v-trend");
-    const tr =
-      d.riverM != null && Number.isFinite(d.riverM)
-        ? trendText(d.trend)
-        : { text: "aguardando medição", dir: "flat" };
-    if (trendEl) {
-      trendEl.textContent = tr.text;
-      trendEl.dataset.dir = tr.dir;
-    }
     $("v-mm-d").textContent = fmt(d.rainDay, 1);
     $("v-mm-w").textContent = fmt(d.rainWeek, 1);
     $("v-mm-m").textContent = fmt(d.rainMonth, 0);
@@ -1449,30 +1621,35 @@
 
     drawTrace(d.riverPts || state.riverPts);
     paintVale(d.vale || state.vale, d.forecast || state.forecast);
-    paintForecast(d.forecast || state.forecast);
-    updateRiverDisplay(d.riverM);
+    paintActiveCity();
   }
 
-  function paintForecast(f) {
+  function paintForecast(f, cityArg) {
     const box = $("forecast");
     if (!box) return;
+    const city = cityArg || getCity(state.activeCity);
     const fc = f || {};
     box.dataset.src = fc.source || "none";
-    box.dataset.risk = fc.risk || "low";
+    box.dataset.risk = fc.risk || riskFromLevel(fc.m, city);
     const proj = $("v-proj");
     const eta = $("v-proj-eta");
     const why = $("v-proj-why");
     if (proj) proj.textContent = fc.m != null ? fmt(fc.m, 2) : "--";
     if (eta) {
-      eta.textContent =
-        fc.hours != null ? `Estimativa para daqui a ~${fc.hours} horas` : "Horário indisponível";
+      if (fc.hours != null) {
+        eta.textContent = `Estimativa para daqui a ~${fc.hours} horas`;
+      } else if (fc.m != null) {
+        eta.textContent = city.basin === "guaiba" ? "Nível atual do Guaíba" : "Horário indisponível";
+      } else {
+        eta.textContent = "Horário indisponível";
+      }
     }
     if (why) why.textContent = fc.why || "--";
   }
 
-  function syncCotaLegend(m) {
-    const risk = riskFromLevel(m);
-    document.querySelectorAll(".cota-legend li").forEach((li) => {
+  function syncCotaLegend(m, city) {
+    const risk = riskFromLevel(m, city);
+    document.querySelectorAll("#cota-legend li").forEach((li) => {
       li.classList.toggle("on", risk !== "none" && li.dataset.band === risk);
     });
   }
@@ -1678,6 +1855,7 @@
       try { drawTrace(state.riverPts); } catch (err) { console.error(err); }
     });
     try { initAlarm(); } catch (err) { console.error(err); }
+    try { initCitySelect(); } catch (err) { console.error(err); }
     try { paintVale({}); } catch (err) { console.error(err); }
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("./sw.js").catch(() => {});
